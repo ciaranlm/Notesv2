@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <title>Notes</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="app" class="app">
+      <aside class="sidebar" aria-label="Notes sidebar">
+        <div class="sidebar__top">
+          <button id="new-note" class="btn btn--primary" type="button">New Note</button>
+          <div class="search">
+            <label class="sr-only" for="search-input">Search notes</label>
+            <input
+              id="search-input"
+              class="input"
+              type="search"
+              placeholder="Search"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+          <div class="sidebar__toggles" role="group" aria-label="Views">
+            <button id="view-notes" class="segmented is-active" type="button" aria-pressed="true">
+              Notes
+            </button>
+            <button id="view-trash" class="segmented" type="button" aria-pressed="false">Trash</button>
+          </div>
+        </div>
+        <div id="notes-list" class="notes-list" role="listbox" aria-label="Notes list"></div>
+        <div class="sidebar__bottom">
+          <button id="open-settings" class="btn btn--ghost" type="button">Settings</button>
+        </div>
+      </aside>
+
+      <main class="main" aria-live="polite">
+        <header class="main__header">
+          <div class="main__header-row">
+            <button id="back-button" class="btn btn--ghost back-button" type="button" aria-label="Back to notes">
+              ← Back
+            </button>
+            <input
+              id="title-input"
+              class="title-input"
+              type="text"
+              placeholder="Untitled"
+              autocomplete="off"
+              spellcheck="false"
+              aria-label="Note title"
+            />
+          </div>
+          <div class="main__meta-row">
+            <div id="last-edited" class="last-edited" aria-live="polite"></div>
+            <div class="actions" role="toolbar" aria-label="Note actions">
+              <button
+                id="restore-note"
+                class="icon-btn"
+                type="button"
+                title="Restore note"
+                aria-label="Restore note"
+                hidden
+              >
+                Restore
+              </button>
+              <button id="pin-note" class="icon-btn" type="button" title="Pin note" aria-label="Pin note">📌</button>
+              <button id="duplicate-note" class="icon-btn" type="button" title="Duplicate note" aria-label="Duplicate note">
+                ⧉
+              </button>
+              <div class="export-group">
+                <button
+                  id="export-html"
+                  class="icon-btn"
+                  type="button"
+                  title="Export as HTML"
+                  aria-label="Export as HTML"
+                >
+                  HTML
+                </button>
+                <button
+                  id="export-txt"
+                  class="icon-btn"
+                  type="button"
+                  title="Export as text"
+                  aria-label="Export as text"
+                >
+                  TXT
+                </button>
+              </div>
+              <button id="delete-note" class="icon-btn danger" type="button" title="Delete note" aria-label="Delete note">
+                🗑
+              </button>
+            </div>
+          </div>
+          <div id="formatting-toolbar" class="toolbar" role="toolbar" aria-label="Formatting">
+            <button class="tool-btn" type="button" data-command="bold" aria-label="Bold"><strong>B</strong></button>
+            <button class="tool-btn" type="button" data-command="italic" aria-label="Italic"><em>I</em></button>
+            <button class="tool-btn" type="button" data-command="underline" aria-label="Underline"><u>U</u></button>
+            <span class="toolbar__divider" aria-hidden="true"></span>
+            <button class="tool-btn" type="button" data-command="insertUnorderedList" aria-label="Bulleted list">• List</button>
+            <button class="tool-btn" type="button" data-command="insertOrderedList" aria-label="Numbered list">1. List</button>
+            <button class="tool-btn" type="button" data-command="checkbox" aria-label="Checkbox list">☑︎</button>
+          </div>
+        </header>
+
+        <section class="editor-shell">
+          <div id="editor" class="editor" contenteditable="true" role="textbox" aria-multiline="true"></div>
+          <div id="empty-state" class="empty-state" hidden>
+            <h2>No note selected</h2>
+            <p>Create a new note to get started.</p>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="settings-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
+      <div class="modal__backdrop" data-close-modal="true"></div>
+      <div class="modal__panel" role="document">
+        <header class="modal__header">
+          <h2 id="settings-title">Settings</h2>
+          <button class="icon-btn" type="button" data-close-modal="true" aria-label="Close settings">✕</button>
+        </header>
+        <div class="modal__body">
+          <label class="toggle">
+            <input id="confirm-delete" type="checkbox" />
+            <span>Confirm before delete</span>
+          </label>
+          <label class="toggle">
+            <input id="paste-plain" type="checkbox" />
+            <span>Paste as plain text</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <template id="note-row-template">
+      <button class="note-row" type="button" role="option">
+        <div class="note-row__title"></div>
+        <div class="note-row__snippet"></div>
+        <div class="note-row__meta">
+          <span class="note-row__date"></span>
+          <span class="note-row__pin" aria-hidden="true">📌</span>
+        </div>
+      </button>
+    </template>
+
+    <script src="app.js"></script>
+  </body>
+</html>
