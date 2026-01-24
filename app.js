@@ -88,7 +88,8 @@
   }
 
   function htmlFromPlainText(text) {
-    var safe = escapeHtml(text);
+    var normalized = String(text || '').replace(/\n{3,}/g, '\n\n');
+    var safe = escapeHtml(normalized);
     var parts = safe.split(/\n/);
     return parts
       .map(function (line) {
@@ -342,7 +343,9 @@
     query: '',
     settings: Store.readSettings(),
     isEditorDirty: false,
-    lastSelectionIndex: -1
+    lastSelectionIndex: -1,
+    saveState: 'idle',
+    lastSavedAt: 0
   };
 
   var el = {
@@ -496,12 +499,25 @@
     // We only write to innerHTML when switching notes, never on each keystroke.
     el.editor.innerHTML = sanitizeHtml(note.contentHtml || '');
     el.title.value = note.title || '';
-    el.lastEdited.textContent = 'Last edited ' + formatDate(note.updatedAt);
+    state.lastSavedAt = note.updatedAt || 0;
+    state.saveState = 'idle';
+    renderSaveState(note.updatedAt || 0);
     updateActionState(note);
 
     if (!opts.preserveFocus) {
       el.title.blur();
     }
+  }
+
+  function focusEditorAtEnd() {
+    el.editor.focus();
+    var selection = window.getSelection();
+    if (!selection) return;
+    var range = document.createRange();
+    range.selectNodeContents(el.editor);
+    range.collapse(false);
+    selection.removeAllRanges();
+    selection.addRange(range);
   }
 
   function persistSettings() {
@@ -511,6 +527,23 @@
   function syncSettingsUi() {
     el.confirmDelete.checked = !!state.settings.confirmDelete;
     el.pastePlain.checked = !!state.settings.pastePlainText;
+  }
+
+  function renderSaveState(tsOverride) {
+    var ts = typeof tsOverride === 'number' ? tsOverride : state.lastSavedAt;
+    if (state.saveState === 'saving') {
+      el.lastEdited.textContent = 'Saving…';
+      return;
+    }
+    if (state.saveState === 'error') {
+      el.lastEdited.textContent = 'Couldn’t save';
+      return;
+    }
+    if (ts) {
+      el.lastEdited.textContent = 'Saved • ' + formatDate(ts);
+      return;
+    }
+    el.lastEdited.textContent = '';
   }
 
   function openModal() {
@@ -542,7 +575,7 @@
     var note = getNoteById(state.activeNoteId);
     if (!note) return;
 
-    var nextHtml = sanitizeHtml(el.editor.innerHTML);
+    var nextHtml = normalizeEditorStructure(sanitizeHtml(el.editor.innerHTML));
     var nextTitle = el.title.value.trim();
     var titleManuallyEdited = note.titleManuallyEdited;
 
@@ -553,17 +586,27 @@
       nextTitle = generated || 'Untitled';
     }
 
-    var updated = Store.updateNote(note.id, function (current) {
-      return Object.assign({}, current, {
-        title: nextTitle,
-        contentHtml: nextHtml,
-        updatedAt: Date.now(),
-        titleManuallyEdited: titleManuallyEdited
+    var savedAt = Date.now();
+    var updated = null;
+    try {
+      updated = Store.updateNote(note.id, function (current) {
+        return Object.assign({}, current, {
+          title: nextTitle,
+          contentHtml: nextHtml,
+          updatedAt: savedAt,
+          titleManuallyEdited: titleManuallyEdited
+        });
       });
-    });
+    } catch (err) {
+      state.saveState = 'error';
+      renderSaveState();
+      return;
+    }
 
     if (updated) {
-      el.lastEdited.textContent = 'Last edited ' + formatDate(updated.updatedAt);
+      state.lastSavedAt = savedAt;
+      state.saveState = 'saved';
+      renderSaveState(savedAt);
       if (!titleManuallyEdited) {
         el.title.value = updated.title;
       }
@@ -575,30 +618,42 @@
   var saveActiveNoteDebounced = debounce(saveActiveNoteNow, 400);
 
   function markDirtyAndSave() {
+    var note = getNoteById(state.activeNoteId);
+    if (!note) return;
     state.isEditorDirty = true;
+    state.saveState = 'saving';
+    var now = Date.now();
+    state.lastSavedAt = now;
+    renderSaveState();
+    Store.updateNote(note.id, function (current) {
+      return Object.assign({}, current, {
+        updatedAt: now
+      });
+    });
+    renderList();
     saveActiveNoteDebounced();
   }
 
   function handleTitleInput() {
     var note = getNoteById(state.activeNoteId);
     if (!note) return;
+    var now = Date.now();
+    var nextTitle = el.title.value.trim() || 'Untitled';
     if (!note.titleManuallyEdited) {
-      Store.updateNote(note.id, function (current) {
-        return Object.assign({}, current, {
-          titleManuallyEdited: true,
-          title: el.title.value.trim() || 'Untitled',
-          updatedAt: Date.now()
-        });
-      });
-    } else {
-      Store.updateNote(note.id, function (current) {
-        return Object.assign({}, current, {
-          title: el.title.value.trim() || 'Untitled',
-          updatedAt: Date.now()
-        });
-      });
+      note.titleManuallyEdited = true;
     }
-    el.lastEdited.textContent = 'Last edited ' + formatDate(Date.now());
+    state.saveState = 'saving';
+    state.lastSavedAt = now;
+    renderSaveState();
+    Store.updateNote(note.id, function (current) {
+      return Object.assign({}, current, {
+        titleManuallyEdited: true,
+        title: nextTitle,
+        updatedAt: now
+      });
+    });
+    state.saveState = 'saved';
+    renderSaveState(now);
     renderList();
   }
 
@@ -623,8 +678,8 @@
     checkbox.type = 'checkbox';
 
     var span = document.createElement('span');
-    span.setAttribute('contenteditable', 'true');
-    span.textContent = initialText || '';
+    var textNode = document.createTextNode(initialText || '');
+    span.appendChild(textNode);
 
     todo.appendChild(checkbox);
     todo.appendChild(span);
@@ -637,11 +692,11 @@
     todo.after(after);
 
     var newRange = document.createRange();
-    newRange.selectNodeContents(span);
-    newRange.collapse(false);
+    newRange.setStart(textNode, textNode.textContent.length);
+    newRange.collapse(true);
     selection.removeAllRanges();
     selection.addRange(newRange);
-    span.focus();
+    el.editor.focus();
 
     markDirtyAndSave();
   }
@@ -675,7 +730,8 @@
     var block = container.closest('div, p, li');
     if (!block || !el.editor.contains(block)) return;
 
-    var text = (block.textContent || '').trimStart();
+    var raw = block.textContent || '';
+    var text = raw.replace(/^\s+/, '');
     if (text.indexOf('- [ ] ') !== 0) return;
 
     var rest = text.slice(6);
@@ -705,16 +761,16 @@
     markDirtyAndSave();
   }
 
-  function normalizeEditorStructure() {
-    var html = el.editor.innerHTML;
-    if (!html || !html.trim()) return;
-    if (html.indexOf('<div') === -1 && html.indexOf('<p') === -1 && html.indexOf('<ul') === -1 && html.indexOf('<ol') === -1) {
-      el.editor.innerHTML = '<div>' + sanitizeHtml(html) + '</div>';
+  function normalizeEditorStructure(html) {
+    var source = typeof html === 'string' ? html : el.editor.innerHTML;
+    if (!source || !source.trim()) return source || '';
+    if (source.indexOf('<div') === -1 && source.indexOf('<p') === -1 && source.indexOf('<ul') === -1 && source.indexOf('<ol') === -1 && source.indexOf('<h1') === -1 && source.indexOf('<h2') === -1 && source.indexOf('<h3') === -1) {
+      return '<div>' + sanitizeHtml(source) + '</div>';
     }
+    return source;
   }
 
   function handleEditorInput() {
-    normalizeEditorStructure();
     markDirtyAndSave();
     handleChecklistShortcut();
   }
@@ -744,6 +800,55 @@
       }
       btn.classList.toggle('is-active', !!active);
     });
+  }
+
+  function insertBlockTag(tagName) {
+    var sel = window.getSelection();
+    if (!sel || !sel.anchorNode) return;
+    var node = sel.anchorNode.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode;
+    if (!node) return;
+    var block = node.closest('div, p, li, h1, h2, h3');
+    if (!block || !el.editor.contains(block)) return;
+    var replacement = document.createElement(tagName);
+    replacement.innerHTML = block.innerHTML && block.innerHTML.trim() ? block.innerHTML : '<br>';
+    block.replaceWith(replacement);
+    var range = document.createRange();
+    range.selectNodeContents(replacement);
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    markDirtyAndSave();
+  }
+
+  function insertListFromSlash(ordered) {
+    execCommand(ordered ? 'insertOrderedList' : 'insertUnorderedList');
+  }
+
+  function handleSlashCommand() {
+    var sel = window.getSelection();
+    if (!sel || !sel.anchorNode) return false;
+    var node = sel.anchorNode.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode;
+    if (!node) return false;
+    var block = node.closest('div, p, li, h1, h2, h3');
+    if (!block || !el.editor.contains(block)) return false;
+    var text = (block.textContent || '').trim();
+    var map = {
+      '/h1': function () { insertBlockTag('h1'); },
+      '/h2': function () { insertBlockTag('h2'); },
+      '/h3': function () { insertBlockTag('h3'); },
+      '/p': function () { insertBlockTag('div'); },
+      '/ul': function () { insertListFromSlash(false); },
+      '/ol': function () { insertListFromSlash(true); },
+      '/list': function () { insertListFromSlash(false); },
+      '/todo': function () { insertCheckboxItem(''); },
+      '/check': function () { insertCheckboxItem(''); },
+      '/checkbox': function () { insertCheckboxItem(''); }
+    };
+    var handler = map[text.toLowerCase()];
+    if (!handler) return false;
+    block.textContent = '';
+    handler();
+    return true;
   }
 
   function handleToolbarClick(e) {
@@ -790,6 +895,14 @@
     if (e.key === 'Tab') {
       handleTabIndent(e);
       return;
+    }
+
+    if (e.target === el.editor && (e.key === ' ' || e.key === 'Enter')) {
+      var handledSlash = handleSlashCommand();
+      if (handledSlash) {
+        e.preventDefault();
+        return;
+      }
     }
 
     if (e.target === el.editor && (e.key === 'ArrowDown' || e.key === 'ArrowUp') && !e.shiftKey) {
@@ -964,6 +1077,16 @@
     el.editor.addEventListener('click', handleEditorClick);
     el.editor.addEventListener('keyup', updateToolbarState);
     el.editor.addEventListener('mouseup', updateToolbarState);
+    el.editor.addEventListener('focusin', function () {
+      el.app.classList.add('is-writing');
+    });
+    el.editor.addEventListener('focusout', function () {
+      window.setTimeout(function () {
+        if (document.activeElement !== el.editor) {
+          el.app.classList.remove('is-writing');
+        }
+      }, 0);
+    });
   }
 
   function initListHandlers() {
@@ -1004,6 +1127,7 @@
     renderList();
     if (active) {
       loadNoteIntoEditor(active);
+      focusEditorAtEnd();
     } else {
       renderEditorEmpty();
     }
