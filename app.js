@@ -1,14 +1,19 @@
 (function () {
   'use strict';
 
-  var NOTES_KEY = 'notes.v1';
+  var NOTES_KEY = 'notes.v2';
   var SETTINGS_KEY = 'notes.settings.v1';
+  var DIFF_DAYS = 3;
+
+  var INTENTS = [
+    { id: 'idea', label: '💡 Idea' },
+    { id: 'question', label: '❓ Open question' },
+    { id: 'decision', label: '✅ Decision' },
+    { id: 'hypothesis', label: '🧪 Hypothesis' }
+  ];
 
   function uid() {
-    return (
-      Date.now().toString(36) +
-      Math.random().toString(36).slice(2, 8)
-    );
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   }
 
   function debounce(fn, wait) {
@@ -37,6 +42,19 @@
     }
   }
 
+  function formatLongDate(ts) {
+    var date = new Date(ts);
+    try {
+      return new Intl.DateTimeFormat(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      }).format(date);
+    } catch (err) {
+      return date.toDateString();
+    }
+  }
+
   function escapeHtml(str) {
     return String(str)
       .replace(/&/g, '&amp;')
@@ -46,18 +64,11 @@
       .replace(/'/g, '&#039;');
   }
 
-  // Sanitizer that removes scripts, inline handlers, and unsafe URLs.
   function sanitizeHtml(html) {
     var template = document.createElement('template');
     template.innerHTML = html;
 
-    var walker = document.createTreeWalker(
-      template.content,
-      NodeFilter.SHOW_ELEMENT,
-      null,
-      false
-    );
-
+    var walker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT, null, false);
     var nodes = [];
     while (walker.nextNode()) {
       nodes.push(walker.currentNode);
@@ -142,20 +153,90 @@
     }, 0);
   }
 
+  function markerTypeFromText(text) {
+    if (!text) return null;
+    var trimmed = text.replace(/^\s+/, '');
+    if (trimmed.indexOf('?? ') === 0) return 'question';
+    if (trimmed.indexOf('-> ') === 0) return 'action';
+    return null;
+  }
+
+  function cleanMarkerPrefix(text) {
+    if (!text) return '';
+    return text.replace(/^\s*(\?\?|->)\s+/, '').trim();
+  }
+
+  function isMeaningful(text) {
+    return !!(text && text.replace(/\s+/g, '').length > 0);
+  }
+
+  function getBlockNodes(root) {
+    if (!root) return [];
+    return Array.prototype.slice.call(root.querySelectorAll('div, p, li, h1, h2, h3'));
+  }
+
+  function analyzeBlocks(blocks) {
+    var openQuestions = 0;
+    var actions = 0;
+    blocks.forEach(function (block) {
+      var text = (block.textContent || '').trim();
+      var marker = markerTypeFromText(text);
+      if (marker === 'question') openQuestions += 1;
+      if (marker === 'action') actions += 1;
+    });
+    return {
+      openQuestions: openQuestions,
+      actions: actions
+    };
+  }
+
+  function analyzeNoteHtml(html) {
+    var div = document.createElement('div');
+    div.innerHTML = html || '';
+    var blocks = getBlockNodes(div);
+    return analyzeBlocks(blocks);
+  }
+
+  function intentById(id) {
+    for (var i = 0; i < INTENTS.length; i += 1) {
+      if (INTENTS[i].id === id) return INTENTS[i];
+    }
+    return null;
+  }
+
+  function normalizeThinking(thinking) {
+    if (!thinking || !thinking.endsAt || thinking.endsAt < Date.now()) {
+      return null;
+    }
+    return thinking;
+  }
+
+  function normalizeNote(note) {
+    var safe = Object.assign({}, note);
+    if (typeof safe.intent !== 'string') safe.intent = '';
+    if (typeof safe.openQuestionCount !== 'number') safe.openQuestionCount = 0;
+    if (typeof safe.actionCount !== 'number') safe.actionCount = 0;
+    if (typeof safe.lastOpenedAt !== 'number') safe.lastOpenedAt = 0;
+    if (typeof safe.snapshotHtml !== 'string') safe.snapshotHtml = '';
+    safe.thinking = normalizeThinking(safe.thinking);
+    return safe;
+  }
+
   var Store = (function () {
     function readNotes() {
       try {
         var raw = localStorage.getItem(NOTES_KEY);
         if (!raw) return [];
         var parsed = JSON.parse(raw);
-        return Array.isArray(parsed) ? parsed : [];
+        if (!Array.isArray(parsed)) return [];
+        return parsed.map(normalizeNote);
       } catch (err) {
         return [];
       }
     }
 
     function writeNotes(notes) {
-      localStorage.setItem(NOTES_KEY, JSON.stringify(notes));
+      localStorage.setItem(NOTES_KEY, JSON.stringify(notes.map(normalizeNote)));
     }
 
     function readSettings() {
@@ -168,14 +249,9 @@
         if (!raw) return defaults;
         var parsed = JSON.parse(raw) || {};
         return {
-          confirmDelete:
-            typeof parsed.confirmDelete === 'boolean'
-              ? parsed.confirmDelete
-              : defaults.confirmDelete,
+          confirmDelete: typeof parsed.confirmDelete === 'boolean' ? parsed.confirmDelete : defaults.confirmDelete,
           pastePlainText:
-            typeof parsed.pastePlainText === 'boolean'
-              ? parsed.pastePlainText
-              : defaults.pastePlainText
+            typeof parsed.pastePlainText === 'boolean' ? parsed.pastePlainText : defaults.pastePlainText
         };
       } catch (err) {
         return defaults;
@@ -192,10 +268,14 @@
         '<div><br></div>',
         '<div>• Create a new note with the “New Note” button.</div>',
         '<div>• Use ⌘/Ctrl+B, I, U for formatting.</div>',
-        '<div>• Try a checklist with the ☑︎ button or type “- [ ] ”.</div>'
+        '<div>• Try a checklist with the ☑︎ button or type “- [ ] ”.</div>',
+        '<div><br></div>',
+        '<div>PM tips:</div>',
+        '<div>?? What evidence do we need?</div>',
+        '<div>-> Share the summary in standup</div>'
       ].join('');
-
-      return {
+      var meta = analyzeNoteHtml(welcomeHtml);
+      return normalizeNote({
         id: uid(),
         title: 'Welcome',
         contentHtml: welcomeHtml,
@@ -203,8 +283,14 @@
         updatedAt: now,
         pinned: false,
         trashed: false,
-        titleManuallyEdited: true
-      };
+        titleManuallyEdited: true,
+        intent: '',
+        openQuestionCount: meta.openQuestions,
+        actionCount: meta.actions,
+        lastOpenedAt: now,
+        snapshotHtml: welcomeHtml,
+        thinking: null
+      });
     }
 
     function ensureSeedData() {
@@ -230,7 +316,7 @@
     function createNote() {
       var notes = ensureSeedData();
       var now = Date.now();
-      var note = {
+      var note = normalizeNote({
         id: uid(),
         title: 'Untitled',
         contentHtml: '',
@@ -238,8 +324,14 @@
         updatedAt: now,
         pinned: false,
         trashed: false,
-        titleManuallyEdited: false
-      };
+        titleManuallyEdited: false,
+        intent: '',
+        openQuestionCount: 0,
+        actionCount: 0,
+        lastOpenedAt: now,
+        snapshotHtml: '',
+        thinking: null
+      });
       notes.unshift(note);
       writeNotes(notes);
       return note;
@@ -250,7 +342,7 @@
       var updated = null;
       var nextNotes = notes.map(function (note) {
         if (note.id !== id) return note;
-        updated = updater(note);
+        updated = normalizeNote(updater(normalizeNote(note)));
         return updated;
       });
       if (updated) {
@@ -266,7 +358,7 @@
       });
       if (!original) return null;
       var now = Date.now();
-      var copy = {
+      var copy = normalizeNote({
         id: uid(),
         title: original.title ? original.title + ' Copy' : 'Untitled Copy',
         contentHtml: original.contentHtml,
@@ -274,8 +366,14 @@
         updatedAt: now,
         pinned: false,
         trashed: false,
-        titleManuallyEdited: true
-      };
+        titleManuallyEdited: true,
+        intent: original.intent || '',
+        openQuestionCount: original.openQuestionCount || 0,
+        actionCount: original.actionCount || 0,
+        lastOpenedAt: now,
+        snapshotHtml: original.snapshotHtml || original.contentHtml || '',
+        thinking: null
+      });
       notes.unshift(copy);
       writeNotes(notes);
       return copy;
@@ -345,51 +443,164 @@
     isEditorDirty: false,
     lastSelectionIndex: -1,
     saveState: 'idle',
-    lastSavedAt: 0
+    lastSavedAt: 0,
+    intentFilters: {},
+    filterQuestionsOnly: false,
+    filterActionsOnly: false,
+    diffTimeoutId: 0,
+    thinkingIntervalId: 0,
+    activeDiffHighlighted: false
   };
 
   var el = {
     app: document.getElementById('app'),
     newNote: document.getElementById('new-note'),
     search: document.getElementById('search-input'),
+    intentFilters: document.getElementById('intent-filters'),
+    filterQuestions: document.getElementById('filter-open-questions'),
+    filterActions: document.getElementById('filter-actions'),
+    openQuestionsCount: document.getElementById('open-questions-count'),
+    actionsCount: document.getElementById('actions-count'),
     notesList: document.getElementById('notes-list'),
     noteTemplate: document.getElementById('note-row-template'),
     viewNotes: document.getElementById('view-notes'),
     viewTrash: document.getElementById('view-trash'),
     title: document.getElementById('title-input'),
+    intentSelect: document.getElementById('intent-select'),
+    thinkingSelect: document.getElementById('thinking-select'),
+    thinkingTimer: document.getElementById('thinking-timer'),
+    thinkingPrompt: document.getElementById('thinking-prompt'),
+    captureTakeaway: document.getElementById('capture-takeaway'),
+    dismissTakeaway: document.getElementById('dismiss-takeaway'),
+    markDecision: document.getElementById('mark-decision'),
     lastEdited: document.getElementById('last-edited'),
     editor: document.getElementById('editor'),
     emptyState: document.getElementById('empty-state'),
     toolbar: document.getElementById('formatting-toolbar'),
+    insertEvidence: document.getElementById('insert-evidence'),
     backButton: document.getElementById('back-button'),
     restore: document.getElementById('restore-note'),
     pin: document.getElementById('pin-note'),
     duplicate: document.getElementById('duplicate-note'),
-    exportHtml: document.getElementById('export-html'),
-    exportTxt: document.getElementById('export-txt'),
+    exportToggle: document.getElementById('export-toggle'),
+    exportPanel: document.getElementById('export-panel'),
+    exportItems: document.querySelectorAll('.export-item'),
     del: document.getElementById('delete-note'),
     modal: document.getElementById('settings-modal'),
     modalCloseTargets: document.querySelectorAll('[data-close-modal]'),
     confirmDelete: document.getElementById('confirm-delete'),
     pastePlain: document.getElementById('paste-plain'),
-    openSettings: document.getElementById('open-settings')
+    openSettings: document.getElementById('open-settings'),
+    toast: document.getElementById('toast')
   };
 
-  function getNotesForView() {
-    var notes = Store.getAll();
-    var filtered = notes.filter(function (note) {
-      return state.showTrash ? note.trashed : !note.trashed;
+  function showToast(message) {
+    if (!el.toast) return;
+    el.toast.textContent = message;
+    el.toast.hidden = false;
+    window.clearTimeout(el.toast._hideId);
+    el.toast._hideId = window.setTimeout(function () {
+      el.toast.hidden = true;
+    }, 1600);
+  }
+
+  function buildIntentFilters() {
+    if (!el.intentFilters) return;
+    el.intentFilters.innerHTML = '';
+    INTENTS.forEach(function (intent) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'intent-chip';
+      btn.dataset.intent = intent.id;
+      btn.textContent = intent.label;
+      btn.addEventListener('click', function () {
+        toggleIntentFilter(intent.id);
+      });
+      el.intentFilters.appendChild(btn);
     });
+  }
+
+  function buildIntentSelectOptions() {
+    if (!el.intentSelect) return;
+    INTENTS.forEach(function (intent) {
+      var opt = document.createElement('option');
+      opt.value = intent.id;
+      opt.textContent = intent.label;
+      el.intentSelect.appendChild(opt);
+    });
+  }
+
+  function toggleIntentFilter(intentId) {
+    state.intentFilters[intentId] = !state.intentFilters[intentId];
+    renderIntentFilters();
+    renderList();
+  }
+
+  function activeIntentFilterCount() {
+    return Object.keys(state.intentFilters).filter(function (id) {
+      return !!state.intentFilters[id];
+    }).length;
+  }
+
+  function renderIntentFilters() {
+    var chips = el.intentFilters.querySelectorAll('.intent-chip');
+    chips.forEach(function (chip) {
+      var id = chip.dataset.intent;
+      var active = !!state.intentFilters[id];
+      chip.classList.toggle('is-active', active);
+      chip.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
+  function updateSidebarStats() {
+    var notes = Store.getAll().filter(function (note) {
+      return !note.trashed;
+    });
+    var questions = 0;
+    var actions = 0;
+    notes.forEach(function (note) {
+      questions += note.openQuestionCount || 0;
+      actions += note.actionCount || 0;
+    });
+    el.openQuestionsCount.textContent = String(questions);
+    el.actionsCount.textContent = String(actions);
+    el.filterQuestions.disabled = state.showTrash;
+    el.filterActions.disabled = state.showTrash;
+    el.filterQuestions.classList.toggle('is-active', state.filterQuestionsOnly && !state.showTrash);
+    el.filterActions.classList.toggle('is-active', state.filterActionsOnly && !state.showTrash);
+    el.filterQuestions.setAttribute('aria-pressed', state.filterQuestionsOnly && !state.showTrash ? 'true' : 'false');
+    el.filterActions.setAttribute('aria-pressed', state.filterActionsOnly && !state.showTrash ? 'true' : 'false');
+  }
+
+  function noteMatchesFilters(note) {
+    if (state.showTrash ? !note.trashed : note.trashed) return false;
+
+    var hasIntentFilters = activeIntentFilterCount() > 0;
+    if (hasIntentFilters && !state.intentFilters[note.intent]) {
+      return false;
+    }
+
+    if (state.filterQuestionsOnly && (note.openQuestionCount || 0) === 0) {
+      return false;
+    }
+
+    if (state.filterActionsOnly && (note.actionCount || 0) === 0) {
+      return false;
+    }
 
     if (state.query.trim()) {
       var q = state.query.trim().toLowerCase();
-      filtered = filtered.filter(function (note) {
-        var inTitle = (note.title || '').toLowerCase().indexOf(q) !== -1;
-        var inBody = textFromHtml(note.contentHtml).toLowerCase().indexOf(q) !== -1;
-        return inTitle || inBody;
-      });
+      var inTitle = (note.title || '').toLowerCase().indexOf(q) !== -1;
+      var inBody = textFromHtml(note.contentHtml).toLowerCase().indexOf(q) !== -1;
+      if (!inTitle && !inBody) return false;
     }
 
+    return true;
+  }
+
+  function getNotesForView() {
+    var notes = Store.getAll();
+    var filtered = notes.filter(noteMatchesFilters);
     return Store.sortNotes(filtered);
   }
 
@@ -402,8 +613,28 @@
     return null;
   }
 
+  function finalizeActiveNoteSnapshot() {
+    var note = getNoteById(state.activeNoteId);
+    if (!note || state.showTrash) return;
+    saveActiveNoteNow();
+    var html = normalizeEditorStructure(sanitizeHtml(el.editor.innerHTML));
+    var meta = analyzeNoteHtml(html);
+    var now = Date.now();
+    Store.updateNote(note.id, function (current) {
+      return Object.assign({}, current, {
+        snapshotHtml: html,
+        lastOpenedAt: now,
+        openQuestionCount: meta.openQuestions,
+        actionCount: meta.actions
+      });
+    });
+  }
+
   function setActiveNote(id, opts) {
     opts = opts || {};
+    if (state.activeNoteId && state.activeNoteId !== id) {
+      finalizeActiveNoteSnapshot();
+    }
     var note = getNoteById(id);
     if (!note) return;
     state.activeNoteId = id;
@@ -421,6 +652,7 @@
       state.activeNoteId = null;
       renderEditorEmpty();
       renderList();
+      updateSidebarStats();
       return null;
     }
     var active = getNoteById(state.activeNoteId);
@@ -449,6 +681,16 @@
       node.querySelector('.note-row__snippet').textContent = snippetFromHtml(note.contentHtml);
       node.querySelector('.note-row__date').textContent = formatDate(note.updatedAt);
 
+      var intentEl = node.querySelector('.note-row__intent');
+      var intent = intentById(note.intent);
+      if (intent) {
+        intentEl.hidden = false;
+        intentEl.textContent = intent.label;
+      } else {
+        intentEl.hidden = true;
+        intentEl.textContent = '';
+      }
+
       node.addEventListener('click', function () {
         setActiveNote(note.id);
       });
@@ -460,6 +702,8 @@
       return n.id === state.activeNoteId;
     });
     state.lastSelectionIndex = activeIndex;
+    updateSidebarStats();
+    renderIntentFilters();
   }
 
   function renderEditorEmpty() {
@@ -467,14 +711,21 @@
     el.editor.classList.add('hidden');
     el.title.value = '';
     el.lastEdited.textContent = '';
+    el.intentSelect.value = '';
+    el.thinkingSelect.value = '';
+    stopThinkingTimer();
+    toggleThinkingPrompt(false);
     updateActionState(null);
   }
 
   function updateActionState(note) {
     var disabled = !note;
-    [el.restore, el.pin, el.duplicate, el.exportHtml, el.exportTxt, el.del].forEach(function (btn) {
-      btn.disabled = disabled;
-    });
+    [el.restore, el.pin, el.duplicate, el.exportToggle, el.del, el.intentSelect, el.markDecision, el.insertEvidence].forEach(
+      function (btn) {
+        if (!btn) return;
+        btn.disabled = disabled;
+      }
+    );
     if (!note) return;
     var inTrash = !!state.showTrash;
     el.restore.hidden = !inTrash;
@@ -482,6 +733,11 @@
 
     el.pin.hidden = inTrash;
     el.duplicate.hidden = inTrash;
+    el.exportToggle.hidden = inTrash;
+    el.markDecision.hidden = inTrash;
+    el.insertEvidence.disabled = disabled || inTrash;
+    el.intentSelect.disabled = disabled || inTrash;
+    el.thinkingSelect.disabled = disabled || inTrash;
 
     el.pin.textContent = note.pinned ? '📍' : '📌';
     el.pin.title = note.pinned ? 'Unpin note' : 'Pin note';
@@ -491,18 +747,95 @@
     el.del.setAttribute('aria-label', el.del.title);
   }
 
+  function applyIntentToSelect(note) {
+    el.intentSelect.value = note.intent || '';
+  }
+
+  function toggleThinkingPrompt(show) {
+    el.thinkingPrompt.hidden = !show;
+  }
+
+  function startThinkingTimer(note) {
+    stopThinkingTimer();
+    if (!note || !note.thinking) {
+      el.thinkingTimer.hidden = true;
+      toggleThinkingPrompt(false);
+      return;
+    }
+    el.thinkingTimer.hidden = false;
+    renderThinkingTimer(note);
+    state.thinkingIntervalId = window.setInterval(function () {
+      var current = getNoteById(state.activeNoteId);
+      if (!current || !current.thinking) {
+        stopThinkingTimer();
+        return;
+      }
+      renderThinkingTimer(current);
+    }, 1000);
+  }
+
+  function stopThinkingTimer() {
+    if (state.thinkingIntervalId) {
+      window.clearInterval(state.thinkingIntervalId);
+      state.thinkingIntervalId = 0;
+    }
+  }
+
+  function renderThinkingTimer(note) {
+    var thinking = note.thinking;
+    if (!thinking) {
+      el.thinkingTimer.hidden = true;
+      toggleThinkingPrompt(false);
+      return;
+    }
+    var remaining = Math.max(0, thinking.endsAt - Date.now());
+    var mins = Math.floor(remaining / 60000);
+    var secs = Math.floor((remaining % 60000) / 1000);
+    el.thinkingTimer.textContent = 'Thinking • ' + String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
+    el.thinkingTimer.classList.toggle('is-ending', remaining <= 60000 && remaining > 0);
+
+    var prompted = !!thinking.promptedAt;
+    if (remaining === 0 && !prompted) {
+      var now = Date.now();
+      Store.updateNote(note.id, function (current) {
+        var nextThinking = current.thinking ? Object.assign({}, current.thinking) : null;
+        if (nextThinking) {
+          nextThinking.promptedAt = now;
+        }
+        return Object.assign({}, current, {
+          thinking: nextThinking
+        });
+      });
+      toggleThinkingPrompt(true);
+      return;
+    }
+
+    if (remaining === 0 && prompted && !thinking.dismissedAt && !thinking.capturedAt) {
+      toggleThinkingPrompt(true);
+    } else if (thinking.dismissedAt || thinking.capturedAt) {
+      toggleThinkingPrompt(false);
+    } else {
+      toggleThinkingPrompt(false);
+    }
+  }
+
   function loadNoteIntoEditor(note, opts) {
     opts = opts || {};
     el.emptyState.hidden = true;
     el.editor.classList.remove('hidden');
 
-    // We only write to innerHTML when switching notes, never on each keystroke.
     el.editor.innerHTML = sanitizeHtml(note.contentHtml || '');
     el.title.value = note.title || '';
     state.lastSavedAt = note.updatedAt || 0;
     state.saveState = 'idle';
     renderSaveState(note.updatedAt || 0);
     updateActionState(note);
+    applyIntentToSelect(note);
+    el.thinkingSelect.value = note.thinking ? String(note.thinking.durationMin) : '';
+
+    scanAndDecorateEditor();
+    applyDiffHighlightIfNeeded(note);
+    startThinkingTimer(note);
 
     if (!opts.preserveFocus) {
       el.title.blur();
@@ -558,6 +891,10 @@
   }
 
   function handleViewToggle(showTrash) {
+    if (!showTrash) {
+      state.filterQuestionsOnly = false;
+      state.filterActionsOnly = false;
+    }
     state.showTrash = showTrash;
     el.viewNotes.classList.toggle('is-active', !showTrash);
     el.viewTrash.classList.toggle('is-active', showTrash);
@@ -569,6 +906,7 @@
       loadNoteIntoEditor(active);
       updateActionState(active);
     }
+    closeExportPanel();
   }
 
   function saveActiveNoteNow() {
@@ -586,6 +924,7 @@
       nextTitle = generated || 'Untitled';
     }
 
+    var meta = analyzeNoteHtml(nextHtml);
     var savedAt = Date.now();
     var updated = null;
     try {
@@ -594,7 +933,9 @@
           title: nextTitle,
           contentHtml: nextHtml,
           updatedAt: savedAt,
-          titleManuallyEdited: titleManuallyEdited
+          titleManuallyEdited: titleManuallyEdited,
+          openQuestionCount: meta.openQuestions,
+          actionCount: meta.actions
         });
       });
     } catch (err) {
@@ -617,6 +958,20 @@
 
   var saveActiveNoteDebounced = debounce(saveActiveNoteNow, 400);
 
+  function updateCountsFromEditor(now) {
+    var note = getNoteById(state.activeNoteId);
+    if (!note) return;
+    var blocks = getBlockNodes(el.editor);
+    var meta = analyzeBlocks(blocks);
+    Store.updateNote(note.id, function (current) {
+      return Object.assign({}, current, {
+        updatedAt: now,
+        openQuestionCount: meta.openQuestions,
+        actionCount: meta.actions
+      });
+    });
+  }
+
   function markDirtyAndSave() {
     var note = getNoteById(state.activeNoteId);
     if (!note) return;
@@ -625,11 +980,8 @@
     var now = Date.now();
     state.lastSavedAt = now;
     renderSaveState();
-    Store.updateNote(note.id, function (current) {
-      return Object.assign({}, current, {
-        updatedAt: now
-      });
-    });
+    scanAndDecorateEditor();
+    updateCountsFromEditor(now);
     renderList();
     saveActiveNoteDebounced();
   }
@@ -657,6 +1009,55 @@
     renderList();
   }
 
+  function handleIntentChange() {
+    var note = getNoteById(state.activeNoteId);
+    if (!note || state.showTrash) return;
+    var now = Date.now();
+    var intent = el.intentSelect.value || '';
+    Store.updateNote(note.id, function (current) {
+      return Object.assign({}, current, {
+        intent: intent,
+        updatedAt: now
+      });
+    });
+    state.saveState = 'saved';
+    state.lastSavedAt = now;
+    renderSaveState(now);
+    renderList();
+  }
+
+  function handleThinkingChange() {
+    var note = getNoteById(state.activeNoteId);
+    if (!note || state.showTrash) return;
+    var minutes = parseInt(el.thinkingSelect.value, 10);
+    if (!minutes) {
+      Store.updateNote(note.id, function (current) {
+        return Object.assign({}, current, {
+          thinking: null
+        });
+      });
+      startThinkingTimer(getNoteById(note.id));
+      toggleThinkingPrompt(false);
+      return;
+    }
+    var now = Date.now();
+    var endsAt = now + minutes * 60000;
+    Store.updateNote(note.id, function (current) {
+      return Object.assign({}, current, {
+        thinking: {
+          durationMin: minutes,
+          startedAt: now,
+          endsAt: endsAt,
+          promptedAt: 0,
+          dismissedAt: 0,
+          capturedAt: 0
+        }
+      });
+    });
+    startThinkingTimer(getNoteById(note.id));
+    showToast('Thinking mode started');
+  }
+
   function execCommand(command, value) {
     el.editor.focus();
     document.execCommand(command, false, value);
@@ -664,7 +1065,6 @@
     updateToolbarState();
   }
 
-  // Insert a checklist item using the requested HTML structure.
   function insertCheckboxItem(initialText) {
     var selection = window.getSelection();
     if (!selection) return;
@@ -719,7 +1119,6 @@
     execCommand(e.shiftKey ? 'outdent' : 'indent');
   }
 
-  // Best-effort checklist trigger when the user types "- [ ] " at line start.
   function handleChecklistShortcut() {
     var sel = window.getSelection();
     if (!sel || !sel.anchorNode) return;
@@ -739,7 +1138,6 @@
     insertCheckboxItem(rest);
   }
 
-  // Paste handling: plain text default with line breaks preserved and sanitized HTML fallback.
   function handlePaste(e) {
     var note = getNoteById(state.activeNoteId);
     if (!note) return;
@@ -764,13 +1162,83 @@
   function normalizeEditorStructure(html) {
     var source = typeof html === 'string' ? html : el.editor.innerHTML;
     if (!source || !source.trim()) return source || '';
-    if (source.indexOf('<div') === -1 && source.indexOf('<p') === -1 && source.indexOf('<ul') === -1 && source.indexOf('<ol') === -1 && source.indexOf('<h1') === -1 && source.indexOf('<h2') === -1 && source.indexOf('<h3') === -1) {
+    if (
+      source.indexOf('<div') === -1 &&
+      source.indexOf('<p') === -1 &&
+      source.indexOf('<ul') === -1 &&
+      source.indexOf('<ol') === -1 &&
+      source.indexOf('<h1') === -1 &&
+      source.indexOf('<h2') === -1 &&
+      source.indexOf('<h3') === -1
+    ) {
       return '<div>' + sanitizeHtml(source) + '</div>';
     }
     return source;
   }
 
+  function clearDiffHighlights() {
+    if (!state.activeDiffHighlighted) return;
+    window.clearTimeout(state.diffTimeoutId);
+    state.diffTimeoutId = 0;
+    var changed = el.editor.querySelectorAll('.changed-block');
+    changed.forEach(function (node) {
+      node.classList.remove('changed-block');
+    });
+    state.activeDiffHighlighted = false;
+  }
+
+  function blocksToTextList(html) {
+    var div = document.createElement('div');
+    div.innerHTML = html || '';
+    return getBlockNodes(div).map(function (node) {
+      return (node.textContent || '').trim();
+    });
+  }
+
+  function applyDiffHighlightIfNeeded(note) {
+    clearDiffHighlights();
+    if (!note || !note.snapshotHtml || state.showTrash) return;
+    if (!note.lastOpenedAt) return;
+    var daysSinceOpen = (Date.now() - note.lastOpenedAt) / 86400000;
+    if (daysSinceOpen < DIFF_DAYS) return;
+
+    var previous = blocksToTextList(note.snapshotHtml);
+    var currentBlocks = getBlockNodes(el.editor);
+    var previousLen = previous.length;
+    currentBlocks.forEach(function (block, index) {
+      var currentText = (block.textContent || '').trim();
+      var previousText = index < previousLen ? previous[index] : '';
+      if (currentText && currentText !== previousText) {
+        block.classList.add('changed-block');
+      }
+    });
+    state.activeDiffHighlighted = true;
+    state.diffTimeoutId = window.setTimeout(function () {
+      clearDiffHighlights();
+    }, 6000);
+  }
+
+  function scanAndDecorateEditor() {
+    var blocks = getBlockNodes(el.editor);
+    blocks.forEach(function (block) {
+      if (block.classList.contains('evidence-block') || block.classList.contains('decision-snapshot')) {
+        return;
+      }
+      block.classList.remove('question-line');
+      block.classList.remove('action-line');
+      var text = (block.textContent || '').trim();
+      var marker = markerTypeFromText(text);
+      if (marker === 'question') {
+        block.classList.add('question-line');
+      }
+      if (marker === 'action') {
+        block.classList.add('action-line');
+      }
+    });
+  }
+
   function handleEditorInput() {
+    clearDiffHighlights();
     markDirtyAndSave();
     handleChecklistShortcut();
   }
@@ -779,7 +1247,6 @@
     var target = e.target;
     if (!(target instanceof HTMLElement)) return;
     if (target.matches('.todo input[type="checkbox"]')) {
-      // Checkbox toggles should save without disrupting the caret.
       markDirtyAndSave();
     }
   }
@@ -833,21 +1300,210 @@
     if (!block || !el.editor.contains(block)) return false;
     var text = (block.textContent || '').trim();
     var map = {
-      '/h1': function () { insertBlockTag('h1'); },
-      '/h2': function () { insertBlockTag('h2'); },
-      '/h3': function () { insertBlockTag('h3'); },
-      '/p': function () { insertBlockTag('div'); },
-      '/ul': function () { insertListFromSlash(false); },
-      '/ol': function () { insertListFromSlash(true); },
-      '/list': function () { insertListFromSlash(false); },
-      '/todo': function () { insertCheckboxItem(''); },
-      '/check': function () { insertCheckboxItem(''); },
-      '/checkbox': function () { insertCheckboxItem(''); }
+      '/h1': function () {
+        insertBlockTag('h1');
+      },
+      '/h2': function () {
+        insertBlockTag('h2');
+      },
+      '/h3': function () {
+        insertBlockTag('h3');
+      },
+      '/p': function () {
+        insertBlockTag('div');
+      },
+      '/ul': function () {
+        insertListFromSlash(false);
+      },
+      '/ol': function () {
+        insertListFromSlash(true);
+      },
+      '/list': function () {
+        insertListFromSlash(false);
+      },
+      '/todo': function () {
+        insertCheckboxItem('');
+      },
+      '/check': function () {
+        insertCheckboxItem('');
+      },
+      '/checkbox': function () {
+        insertCheckboxItem('');
+      }
     };
     var handler = map[text.toLowerCase()];
     if (!handler) return false;
     block.textContent = '';
     handler();
+    return true;
+  }
+
+  function closestBlockFromSelection() {
+    var sel = window.getSelection();
+    if (!sel || !sel.anchorNode) return null;
+    var node = sel.anchorNode.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode;
+    if (!node) return null;
+    var block = node.closest('div, p, li, h1, h2, h3');
+    if (!block || !el.editor.contains(block)) return null;
+    return block;
+  }
+
+  function insertEvidenceBlock() {
+    var sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    var range = sel.getRangeAt(0);
+    if (!el.editor.contains(range.commonAncestorContainer)) {
+      el.editor.focus();
+      focusEditorAtEnd();
+      sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return;
+      range = sel.getRangeAt(0);
+    }
+
+    var evidence = document.createElement('div');
+    evidence.className = 'evidence-block';
+    evidence.setAttribute('data-block-type', 'evidence');
+    var textNode = document.createTextNode('');
+    evidence.appendChild(textNode);
+
+    range.deleteContents();
+    range.insertNode(evidence);
+
+    var after = document.createElement('div');
+    after.innerHTML = '<br>';
+    evidence.after(after);
+
+    var newRange = document.createRange();
+    newRange.setStart(textNode, 0);
+    newRange.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(newRange);
+    el.editor.focus();
+
+    markDirtyAndSave();
+  }
+
+  function selectedTextWithinEditor() {
+    var sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.rangeCount) return '';
+    var range = sel.getRangeAt(0);
+    if (!el.editor.contains(range.commonAncestorContainer)) return '';
+    return sel.toString().trim();
+  }
+
+  function firstMeaningfulParagraph() {
+    var blocks = getBlockNodes(el.editor);
+    for (var i = 0; i < blocks.length; i += 1) {
+      var block = blocks[i];
+      if (block.classList.contains('decision-snapshot')) continue;
+      var text = (block.textContent || '').trim();
+      if (!isMeaningful(text)) continue;
+      return cleanMarkerPrefix(text);
+    }
+    return '';
+  }
+
+  function insertNodeNearTop(node) {
+    var first = el.editor.firstElementChild;
+    if (!first) {
+      el.editor.appendChild(node);
+      return;
+    }
+    if (first.classList.contains('decision-snapshot')) {
+      first.before(node);
+      return;
+    }
+    first.before(node);
+  }
+
+  function markAsDecision() {
+    var note = getNoteById(state.activeNoteId);
+    if (!note || state.showTrash) return;
+    var excerpt = selectedTextWithinEditor();
+    if (!excerpt) {
+      excerpt = firstMeaningfulParagraph();
+    }
+    if (!excerpt) return;
+
+    var now = Date.now();
+    var snapshot = document.createElement('div');
+    snapshot.className = 'decision-snapshot';
+    snapshot.setAttribute('data-block-type', 'decision');
+    snapshot.innerHTML =
+      '<div class="decision-snapshot__title">Decision captured on ' +
+      escapeHtml(formatLongDate(now)) +
+      '</div>' +
+      '<div>' +
+      escapeHtml(excerpt) +
+      '</div>' +
+      '<div class="decision-snapshot__meta">' +
+      escapeHtml(formatDate(now)) +
+      '</div>';
+
+    insertNodeNearTop(snapshot);
+    showToast('Decision captured');
+    markDirtyAndSave();
+  }
+
+  function insertTakeawayAtTop() {
+    var takeaway = document.createElement('div');
+    takeaway.className = 'takeaway-block';
+    takeaway.innerHTML = '<strong>Takeaway:</strong> ';
+    var textNode = document.createTextNode('');
+    takeaway.appendChild(textNode);
+    insertNodeNearTop(takeaway);
+
+    var sel = window.getSelection();
+    if (!sel) return;
+    var range = document.createRange();
+    range.setStart(textNode, 0);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    el.editor.focus();
+    markDirtyAndSave();
+  }
+
+  function handleCaptureTakeaway() {
+    var note = getNoteById(state.activeNoteId);
+    if (!note || !note.thinking) return;
+    insertTakeawayAtTop();
+    var now = Date.now();
+    Store.updateNote(note.id, function (current) {
+      var nextThinking = current.thinking ? Object.assign({}, current.thinking) : null;
+      if (nextThinking) {
+        nextThinking.capturedAt = now;
+      }
+      return Object.assign({}, current, {
+        thinking: nextThinking
+      });
+    });
+    toggleThinkingPrompt(false);
+  }
+
+  function handleDismissTakeaway() {
+    var note = getNoteById(state.activeNoteId);
+    if (!note || !note.thinking) return;
+    var now = Date.now();
+    Store.updateNote(note.id, function (current) {
+      var nextThinking = current.thinking ? Object.assign({}, current.thinking) : null;
+      if (nextThinking) {
+        nextThinking.dismissedAt = now;
+      }
+      return Object.assign({}, current, {
+        thinking: nextThinking
+      });
+    });
+    toggleThinkingPrompt(false);
+  }
+
+  function handleEvidenceShortcut() {
+    var block = closestBlockFromSelection();
+    if (!block) return false;
+    var text = (block.textContent || '').trim().toLowerCase();
+    if (text !== '::evidence') return false;
+    block.textContent = '';
+    insertEvidenceBlock();
     return true;
   }
 
@@ -898,6 +1554,11 @@
     }
 
     if (e.target === el.editor && (e.key === ' ' || e.key === 'Enter')) {
+      var handledEvidence = e.key === 'Enter' ? handleEvidenceShortcut() : false;
+      if (handledEvidence) {
+        e.preventDefault();
+        return;
+      }
       var handledSlash = handleSlashCommand();
       if (handledSlash) {
         e.preventDefault();
@@ -939,7 +1600,7 @@
       setActiveNote(nextNote.id, { preserveFocus: true });
       var activeRow = el.notesList.querySelector('[data-id="' + nextNote.id + '"]');
       if (activeRow) {
-        activeRow.focus();
+        activeRow.focus({ preventScroll: false });
         activeRow.scrollIntoView({ block: 'nearest' });
       }
     }
@@ -1008,25 +1669,235 @@
     }
   }
 
-  function handleExportHtml() {
-    var note = getNoteById(state.activeNoteId);
-    if (!note) return;
-    var title = (note.title || 'note').replace(/[^a-z0-9-_]+/gi, '-').slice(0, 80);
-    var doc =
-      '<!doctype html><html><head><meta charset="utf-8"><title>' +
-      escapeHtml(note.title || 'Note') +
-      '</title></head><body>' +
-      sanitizeHtml(note.contentHtml || '') +
-      '</body></html>';
-    downloadFile(title + '.html', doc, 'text/html;charset=utf-8');
+  function sanitizedTitleForExport(note) {
+    return (note.title || 'note').replace(/[^a-z0-9-_]+/gi, '-').slice(0, 80);
   }
 
-  function handleExportTxt() {
+  function extractLinesFromHtml(html) {
+    var div = document.createElement('div');
+    div.innerHTML = sanitizeHtml(html || '');
+    var blocks = getBlockNodes(div);
+    var lines = [];
+    blocks.forEach(function (block) {
+      if (block.classList.contains('decision-snapshot') || block.classList.contains('evidence-block')) {
+        lines.push(block);
+        return;
+      }
+      var tag = block.tagName ? block.tagName.toLowerCase() : 'div';
+      var text = (block.textContent || '').trim();
+      lines.push({ tag: tag, text: text, block: block });
+    });
+    return lines;
+  }
+
+  function appendSection(lines, heading, items) {
+    if (!items.length) return;
+    lines.push('');
+    lines.push(heading);
+    items.forEach(function (item) {
+      lines.push('- ' + item);
+    });
+  }
+
+  function exportForPrd(note) {
+    var lines = [];
+    lines.push(note.title || 'Untitled');
+    lines.push('');
+
+    var openQuestions = [];
+    var actions = [];
+    var blocks = extractLinesFromHtml(note.contentHtml);
+    blocks.forEach(function (entry) {
+      if (entry instanceof HTMLElement) {
+        if (entry.classList.contains('decision-snapshot')) {
+          lines.push(entry.innerText.trim());
+        }
+        if (entry.classList.contains('evidence-block')) {
+          lines.push('Evidence: ' + entry.innerText.trim());
+        }
+        return;
+      }
+      if (!entry.text) return;
+      var marker = markerTypeFromText(entry.text);
+      if (marker === 'question') {
+        openQuestions.push(cleanMarkerPrefix(entry.text));
+        return;
+      }
+      if (marker === 'action') {
+        actions.push(cleanMarkerPrefix(entry.text));
+        return;
+      }
+      if (entry.tag.indexOf('h') === 0) {
+        lines.push(entry.text);
+      } else {
+        lines.push(entry.text);
+      }
+    });
+
+    appendSection(lines, 'Open Questions', openQuestions);
+    appendSection(lines, 'Actions', actions);
+
+    var fileName = sanitizedTitleForExport(note) + '-prd.txt';
+    downloadFile(fileName, lines.join('\n'), 'text/plain;charset=utf-8');
+  }
+
+  function exportForJira(note) {
+    var lines = [];
+    lines.push((note.title || 'Untitled').toUpperCase());
+    lines.push('');
+
+    var openQuestions = [];
+    var actions = [];
+    var blocks = extractLinesFromHtml(note.contentHtml);
+    blocks.forEach(function (entry) {
+      if (entry instanceof HTMLElement) {
+        if (entry.classList.contains('decision-snapshot')) {
+          lines.push(entry.innerText.trim());
+        }
+        if (entry.classList.contains('evidence-block')) {
+          lines.push('EVIDENCE: ' + entry.innerText.trim());
+        }
+        return;
+      }
+      if (!entry.text) return;
+      var marker = markerTypeFromText(entry.text);
+      if (marker === 'question') {
+        openQuestions.push(cleanMarkerPrefix(entry.text));
+        return;
+      }
+      if (marker === 'action') {
+        actions.push(cleanMarkerPrefix(entry.text));
+        return;
+      }
+      if (entry.tag.indexOf('h') === 0) {
+        lines.push('## ' + entry.text.toUpperCase());
+      } else {
+        lines.push(entry.text);
+      }
+    });
+
+    appendSection(lines, 'ACTIONS', actions);
+    appendSection(lines, 'OPEN QUESTIONS', openQuestions);
+
+    var fileName = sanitizedTitleForExport(note) + '-jira.txt';
+    downloadFile(fileName, lines.join('\n'), 'text/plain;charset=utf-8');
+  }
+
+  function toSlideBullets(text) {
+    return text
+      .split(/[\.\n]/)
+      .map(function (part) {
+        return part.trim();
+      })
+      .filter(isMeaningful)
+      .slice(0, 6);
+  }
+
+  function exportForSlides(note) {
+    var blocks = extractLinesFromHtml(note.contentHtml);
+    var slides = [];
+    var current = null;
+
+    function ensureSlide(title) {
+      if (current) {
+        slides.push(current);
+      }
+      current = {
+        title: title || note.title || 'Slide',
+        bullets: []
+      };
+    }
+
+    ensureSlide(note.title || 'Untitled');
+
+    var openQuestions = [];
+    var actions = [];
+
+    blocks.forEach(function (entry) {
+      if (entry instanceof HTMLElement) {
+        if (entry.classList.contains('decision-snapshot')) {
+          current.bullets.push('Decision: ' + entry.innerText.trim());
+        }
+        if (entry.classList.contains('evidence-block')) {
+          current.bullets.push('Supporting evidence: ' + entry.innerText.trim());
+        }
+        return;
+      }
+      if (!entry.text) return;
+      var marker = markerTypeFromText(entry.text);
+      if (marker === 'question') {
+        openQuestions.push(cleanMarkerPrefix(entry.text));
+        return;
+      }
+      if (marker === 'action') {
+        actions.push(cleanMarkerPrefix(entry.text));
+        return;
+      }
+      if (entry.tag.indexOf('h') === 0) {
+        ensureSlide(entry.text);
+        return;
+      }
+      var bullets = toSlideBullets(entry.text);
+      bullets.forEach(function (b) {
+        current.bullets.push(b);
+      });
+    });
+
+    if (openQuestions.length) {
+      ensureSlide('Open Questions');
+      openQuestions.forEach(function (q) {
+        current.bullets.push(q);
+      });
+    }
+    if (actions.length) {
+      ensureSlide('Actions');
+      actions.forEach(function (a) {
+        current.bullets.push(a);
+      });
+    }
+    if (current) {
+      slides.push(current);
+    }
+
+    var lines = [];
+    slides.forEach(function (slide, index) {
+      if (index > 0) lines.push('');
+      lines.push('=== ' + slide.title + ' ===');
+      slide.bullets.slice(0, 8).forEach(function (bullet) {
+        lines.push('- ' + bullet);
+      });
+    });
+
+    var fileName = sanitizedTitleForExport(note) + '-slides.txt';
+    downloadFile(fileName, lines.join('\n'), 'text/plain;charset=utf-8');
+  }
+
+  function handleExport(mode) {
     var note = getNoteById(state.activeNoteId);
-    if (!note) return;
-    var title = (note.title || 'note').replace(/[^a-z0-9-_]+/gi, '-').slice(0, 80);
-    var text = textFromHtml(note.contentHtml || '');
-    downloadFile(title + '.txt', text, 'text/plain;charset=utf-8');
+    if (!note || state.showTrash) return;
+    closeExportPanel();
+    if (mode === 'prd') exportForPrd(note);
+    if (mode === 'jira') exportForJira(note);
+    if (mode === 'slides') exportForSlides(note);
+  }
+
+  function openExportPanel() {
+    if (state.showTrash) return;
+    el.exportPanel.hidden = false;
+    el.exportToggle.setAttribute('aria-expanded', 'true');
+  }
+
+  function closeExportPanel() {
+    el.exportPanel.hidden = true;
+    el.exportToggle.setAttribute('aria-expanded', 'false');
+  }
+
+  function toggleExportPanel() {
+    if (el.exportPanel.hidden) {
+      openExportPanel();
+    } else {
+      closeExportPanel();
+    }
   }
 
   function handleSearchInput() {
@@ -1042,6 +1913,40 @@
     if (!window.matchMedia('(max-width: 760px)').matches) {
       el.app.classList.remove('is-editor-view');
     }
+  }
+
+  function handleFilterQuestions() {
+    if (state.showTrash) return;
+    state.filterQuestionsOnly = !state.filterQuestionsOnly;
+    if (state.filterQuestionsOnly) {
+      state.filterActionsOnly = false;
+    }
+    var active = ensureActiveNote();
+    renderList();
+    if (active) {
+      loadNoteIntoEditor(active, { preserveFocus: true });
+    }
+  }
+
+  function handleFilterActions() {
+    if (state.showTrash) return;
+    state.filterActionsOnly = !state.filterActionsOnly;
+    if (state.filterActionsOnly) {
+      state.filterQuestionsOnly = false;
+    }
+    var active = ensureActiveNote();
+    renderList();
+    if (active) {
+      loadNoteIntoEditor(active, { preserveFocus: true });
+    }
+  }
+
+  function handleOutsideExportClick(e) {
+    if (el.exportPanel.hidden) return;
+    var target = e.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (target.closest('.export-menu')) return;
+    closeExportPanel();
   }
 
   function initSettingsHandlers() {
@@ -1068,6 +1973,9 @@
 
   function initToolbarHandlers() {
     el.toolbar.addEventListener('click', handleToolbarClick);
+    el.insertEvidence.addEventListener('click', function () {
+      insertEvidenceBlock();
+    });
   }
 
   function initEditorHandlers() {
@@ -1097,15 +2005,20 @@
     el.viewTrash.addEventListener('click', function () {
       handleViewToggle(true);
     });
+    el.filterQuestions.addEventListener('click', handleFilterQuestions);
+    el.filterActions.addEventListener('click', handleFilterActions);
   }
 
   function initActionHandlers() {
     el.newNote.addEventListener('click', createAndSelectNote);
     el.title.addEventListener('input', handleTitleInput);
+    el.intentSelect.addEventListener('change', handleIntentChange);
+    el.thinkingSelect.addEventListener('change', handleThinkingChange);
+    el.captureTakeaway.addEventListener('click', handleCaptureTakeaway);
+    el.dismissTakeaway.addEventListener('click', handleDismissTakeaway);
+    el.markDecision.addEventListener('click', markAsDecision);
     el.pin.addEventListener('click', handlePin);
     el.duplicate.addEventListener('click', handleDuplicate);
-    el.exportHtml.addEventListener('click', handleExportHtml);
-    el.exportTxt.addEventListener('click', handleExportTxt);
     el.restore.addEventListener('click', handleRestore);
     el.del.addEventListener('click', function () {
       handleDelete();
@@ -1116,13 +2029,29 @@
     });
   }
 
+  function initExportHandlers() {
+    el.exportToggle.addEventListener('click', function (e) {
+      e.stopPropagation();
+      toggleExportPanel();
+    });
+    el.exportItems.forEach(function (item) {
+      item.addEventListener('click', function () {
+        handleExport(item.dataset.export);
+      });
+    });
+    document.addEventListener('click', handleOutsideExportClick);
+  }
+
   function initKeyboardHandlers() {
     document.addEventListener('keydown', handleKeydown);
     window.addEventListener('resize', handleResize);
+    window.addEventListener('beforeunload', finalizeActiveNoteSnapshot);
   }
 
   function initialRender() {
     syncSettingsUi();
+    buildIntentFilters();
+    buildIntentSelectOptions();
     var active = ensureActiveNote();
     renderList();
     if (active) {
@@ -1139,6 +2068,7 @@
     initEditorHandlers();
     initListHandlers();
     initActionHandlers();
+    initExportHandlers();
     initKeyboardHandlers();
     initialRender();
   }
