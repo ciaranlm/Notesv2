@@ -785,3 +785,7 @@ body.is-modal-open {
     padding: 14px 16px 8px;
   }
 }
+
+[hidden] {
+  display: none !important;
+}
