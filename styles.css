@@ -327,6 +327,19 @@ input {
   gap: 6px;
 }
 
+
+.app.is-writing .toolbar,
+.app.is-writing .actions,
+.app.is-writing .last-edited {
+  opacity: 0.35;
+  transition: opacity 120ms ease;
+}
+
+.app.is-writing .toolbar:hover,
+.app.is-writing .actions:hover {
+  opacity: 1;
+}
+
 .toolbar {
   margin-top: 12px;
   display: inline-flex;
@@ -381,7 +394,7 @@ input {
 }
 
 .editor:empty::before {
-  content: "Start writing…";
+  content: "Start writing… (type / for commands)";
   color: #b6b6bf;
   pointer-events: none;
 }
@@ -422,7 +435,7 @@ input {
   outline: none;
 }
 
-.todo span[contenteditable="true"]:empty::before {
+.todo span:empty::before {
   content: "Todo";
   color: #b6b6bf;
 }
