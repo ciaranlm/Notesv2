@@ -13,6 +13,7 @@ import { Toolbar } from './components/Toolbar'
 import { Sidebar } from './components/Sidebar'
 import type { Note, ThemeMode } from './types'
 import { loadActiveId, loadNotes, loadTheme, saveActiveId, saveNotes, saveTheme } from './utils/storage'
+import { extractTags, stripHtml } from './utils/tagging'
 
 const turndownService = new TurndownService({ codeBlockStyle: 'fenced' })
 
@@ -27,13 +28,12 @@ const createNote = (title = 'Untitled note'): Note => {
     id: createId(),
     title,
     content: '<p></p>',
+    tags: extractTags(title),
     createdAt: now,
     updatedAt: now,
     trashedAt: null,
   }
 }
-
-const stripHtml = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
 
 const useMediaQuery = (query: string) => {
   const [matches, setMatches] = useState(false)
@@ -128,6 +128,7 @@ const App = () => {
               ? {
                   ...note,
                   content: html,
+                  tags: extractTags(`${note.title} ${html}`),
                   updatedAt: Date.now(),
                 }
               : note,
@@ -225,7 +226,11 @@ const App = () => {
     if (!activeNote) return
     const title = draftTitle.trim() || 'Untitled note'
     setNotes((prev) =>
-      prev.map((note) => (note.id === activeNote.id ? { ...note, title } : note)),
+      prev.map((note) =>
+        note.id === activeNote.id
+          ? { ...note, title, tags: extractTags(`${title} ${note.content}`) }
+          : note,
+      ),
     )
     setRenaming(false)
   }
@@ -274,7 +279,12 @@ const App = () => {
     setNotes((prev) =>
       prev.map((note) =>
         note.id === activeNote.id
-          ? { ...note, content: html, updatedAt: Date.now() }
+          ? {
+              ...note,
+              content: html,
+              tags: extractTags(`${note.title} ${html}`),
+              updatedAt: Date.now(),
+            }
           : note,
       ),
     )
@@ -355,7 +365,12 @@ const App = () => {
                   setNotes((prev) =>
                     prev.map((note) =>
                       note.id === activeNote.id
-                        ? { ...note, title: value, updatedAt: Date.now() }
+                        ? {
+                            ...note,
+                            title: value,
+                            tags: extractTags(`${value} ${note.content}`),
+                            updatedAt: Date.now(),
+                          }
                         : note,
                     ),
                   )

@@ -1,4 +1,5 @@
 import type { Note, ThemeMode } from '../types'
+import { extractTags } from './tagging'
 
 const NOTES_KEY = 'notesv2.notes'
 const ACTIVE_KEY = 'notesv2.active'
@@ -9,7 +10,11 @@ export const loadNotes = (): Note[] => {
   if (!raw) return []
   try {
     const parsed = JSON.parse(raw) as Note[]
-    return Array.isArray(parsed) ? parsed : []
+    if (!Array.isArray(parsed)) return []
+    return parsed.map((note) => ({
+      ...note,
+      tags: extractTags(`${note.title ?? ''} ${note.content ?? ''}`),
+    }))
   } catch {
     return []
   }
