@@ -12,8 +12,17 @@ import TurndownService from 'turndown'
 import { Toolbar } from './components/Toolbar'
 import { Sidebar } from './components/Sidebar'
 import { SlashCommands } from './extensions/slashCommands'
-import type { Note, ThemeMode } from './types'
-import { loadActiveId, loadNotes, loadTheme, saveActiveId, saveNotes, saveTheme } from './utils/storage'
+import type { Note, ThemeColors, ThemeMode } from './types'
+import {
+  loadActiveId,
+  loadNotes,
+  loadTheme,
+  loadThemeColors,
+  saveActiveId,
+  saveNotes,
+  saveTheme,
+  saveThemeColors,
+} from './utils/storage'
 import { extractTags, stripHtml } from './utils/tagging'
 
 const turndownService = new TurndownService({ codeBlockStyle: 'fenced' })
@@ -34,6 +43,61 @@ const createNote = (title = 'Untitled note'): Note => {
     updatedAt: now,
     trashedAt: null,
   }
+}
+
+const THEME_COLOR_KEYS: Array<keyof ThemeColors> = [
+  'zenPanel',
+  'primaryButton',
+  'secondaryButton',
+  'pageBackground',
+  'navBackground',
+  'writingBackground',
+]
+
+const DEFAULT_THEME_COLORS: ThemeColors = {
+  zenPanel: '#ffffff',
+  primaryButton: '#6b5cff',
+  secondaryButton: '#ff9f43',
+  pageBackground: '#f3f1fb',
+  navBackground: '#f6f4ff',
+  writingBackground: '#ffffff',
+}
+
+const THEME_COLOR_VARS: Record<keyof ThemeColors, string> = {
+  zenPanel: '--zen-panel-bg',
+  primaryButton: '--primary',
+  secondaryButton: '--secondary',
+  pageBackground: '--page-bg',
+  navBackground: '--nav-bg',
+  writingBackground: '--writing-bg',
+}
+
+const normalizeHex = (value: string) => {
+  const cleaned = value.trim().toLowerCase()
+  if (!cleaned.startsWith('#')) return cleaned
+  if (cleaned.length === 4) {
+    const [, r, g, b] = cleaned
+    return `#${r}${r}${g}${g}${b}${b}`
+  }
+  return cleaned
+}
+
+const isValidHex = (value: string) => /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(value.trim())
+
+const rgbToHex = (value: string) => {
+  const match = value.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i)
+  if (!match) return null
+  const [, r, g, b] = match
+  const toHex = (channel: string) => Number(channel).toString(16).padStart(2, '0')
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`
+}
+
+const resolveCssColor = (value: string, fallback: string) => {
+  const trimmed = value.trim()
+  if (!trimmed) return fallback
+  if (trimmed.startsWith('#')) return normalizeHex(trimmed)
+  const rgbHex = rgbToHex(trimmed)
+  return rgbHex ?? fallback
 }
 
 const useMediaQuery = (query: string) => {
@@ -74,8 +138,12 @@ const App = () => {
   const [search, setSearch] = useState('')
   const [view, setView] = useState<'notes' | 'trash'>('notes')
   const [theme, setTheme] = useState<ThemeMode>(() => loadTheme())
+  const [themeOverrides, setThemeOverrides] = useState<Partial<ThemeColors>>(() => loadThemeColors())
+  const [computedColors, setComputedColors] = useState<ThemeColors>(DEFAULT_THEME_COLORS)
+  const [themeInputs, setThemeInputs] = useState<ThemeColors>(DEFAULT_THEME_COLORS)
   const [isSidebarOpen, setSidebarOpen] = useState(false)
   const [isRenaming, setRenaming] = useState(false)
+  const [isThemeOpen, setThemeOpen] = useState(false)
   const [draftTitle, setDraftTitle] = useState('')
   const [zenMode, setZenMode] = useState(false)
   const [statusMessage, setStatusMessage] = useState('All changes saved locally')
@@ -155,6 +223,29 @@ const App = () => {
   }, [theme])
 
   useEffect(() => {
+    const styles = getComputedStyle(document.documentElement)
+    const nextColors = { ...DEFAULT_THEME_COLORS }
+    THEME_COLOR_KEYS.forEach((key) => {
+      const cssVar = THEME_COLOR_VARS[key]
+      nextColors[key] = resolveCssColor(styles.getPropertyValue(cssVar), DEFAULT_THEME_COLORS[key])
+    })
+    setComputedColors(nextColors)
+  }, [theme, themeOverrides])
+
+  useEffect(() => {
+    THEME_COLOR_KEYS.forEach((key) => {
+      const cssVar = THEME_COLOR_VARS[key]
+      const value = themeOverrides[key]
+      if (value) {
+        document.documentElement.style.setProperty(cssVar, normalizeHex(value))
+      } else {
+        document.documentElement.style.removeProperty(cssVar)
+      }
+    })
+    saveThemeColors(themeOverrides)
+  }, [themeOverrides])
+
+  useEffect(() => {
     if (!activeNote) return
     const current = editor?.getHTML() ?? ''
     if (current !== activeNote.content) {
@@ -167,11 +258,46 @@ const App = () => {
     if (!isDrawer) setSidebarOpen(false)
   }, [isDrawer])
 
+  const resolvedColors = useMemo(
+    () => ({ ...computedColors, ...themeOverrides }),
+    [computedColors, themeOverrides],
+  )
+
+  useEffect(() => {
+    if (isThemeOpen) {
+      setThemeInputs(resolvedColors)
+    }
+  }, [isThemeOpen, resolvedColors])
+
   useEffect(() => {
     if (activeId) return
     const next = notes.find((note) => !note.trashedAt)
     if (next) setActiveId(next.id)
   }, [activeId, notes])
+
+  const themeSettings = useMemo(
+    () => [
+      { key: 'zenPanel', label: 'Zen panel (left menu)' },
+      { key: 'primaryButton', label: 'Primary button' },
+      { key: 'secondaryButton', label: 'Secondary button' },
+      { key: 'pageBackground', label: 'Page background' },
+      { key: 'navBackground', label: 'Nav background' },
+      { key: 'writingBackground', label: 'Writing area background' },
+    ],
+    [],
+  )
+
+  const handleThemeColorChange = useCallback(
+    (key: keyof ThemeColors, value: string) => {
+      const withHash = value.trim().startsWith('#') ? value.trim() : `#${value.trim()}`
+      const nextValue = normalizeHex(withHash)
+      setThemeInputs((prev) => ({ ...prev, [key]: nextValue }))
+      if (isValidHex(nextValue)) {
+        setThemeOverrides((prev) => ({ ...prev, [key]: nextValue }))
+      }
+    },
+    [],
+  )
 
 
   const handleCreateNote = useCallback(() => {
@@ -327,6 +453,9 @@ const App = () => {
           >
             {zenMode ? 'Exit zen' : 'Zen mode'}
           </button>
+          <button type="button" className="button button--ghost" onClick={() => setThemeOpen(true)}>
+            Theme
+          </button>
           <button
             type="button"
             className="button button--ghost"
@@ -469,6 +598,47 @@ const App = () => {
           event.target.value = ''
         }}
       />
+
+      {isThemeOpen && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal theme-modal">
+            <div className="theme-modal__header">
+              <div>
+                <h2>Theme</h2>
+                <p>Pick hex colors for each area.</p>
+              </div>
+              <button type="button" className="button button--ghost" onClick={() => setThemeOpen(false)}>
+                Close
+              </button>
+            </div>
+            <div className="theme-modal__grid">
+              {themeSettings.map((setting) => {
+                const key = setting.key as keyof ThemeColors
+                return (
+                  <label key={setting.key} className="theme-modal__row">
+                    <span>{setting.label}</span>
+                    <div className="theme-modal__inputs">
+                      <input
+                        type="color"
+                        value={resolvedColors[key]}
+                        onChange={(event) => handleThemeColorChange(key, event.target.value)}
+                        aria-label={`${setting.label} color`}
+                      />
+                      <input
+                        type="text"
+                        value={themeInputs[key]}
+                        onChange={(event) => handleThemeColorChange(key, event.target.value)}
+                        spellCheck={false}
+                        inputMode="text"
+                      />
+                    </div>
+                  </label>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {isRenaming && activeNote && (
         <div className="modal-backdrop" role="dialog" aria-modal="true">

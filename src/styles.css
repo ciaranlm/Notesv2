@@ -8,6 +8,13 @@
   --border: #27233a;
   --accent: #6b5cff;
   --accent2: #ff9f43;
+  --primary: var(--accent);
+  --secondary: var(--accent2);
+  --secondary-contrast: #2b1b00;
+  --page-bg: var(--bg);
+  --nav-bg: var(--surface2);
+  --zen-panel-bg: var(--surface);
+  --writing-bg: var(--surface);
   --shadow: 0 12px 30px rgba(30, 22, 68, 0.2);
   --radius: 16px;
   --radius-sm: 12px;
@@ -25,6 +32,13 @@
   --border: #f1eefe;
   --accent: #9b88ff;
   --accent2: #ffcc7a;
+  --primary: var(--accent);
+  --secondary: var(--accent2);
+  --secondary-contrast: #1e0d13;
+  --page-bg: var(--bg);
+  --nav-bg: var(--surface2);
+  --zen-panel-bg: var(--surface);
+  --writing-bg: var(--surface);
   --shadow: 0 12px 26px rgba(0, 0, 0, 0.4);
   --grid: rgba(250, 247, 255, 0.06);
 }
@@ -36,7 +50,7 @@
 body {
   margin: 0;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  background: var(--bg);
+  background: var(--page-bg);
   color: var(--text);
 }
 
@@ -62,7 +76,7 @@ a {
   align-items: center;
   padding: 12px 24px;
   border-bottom: 2px solid var(--border);
-  background: var(--surface2);
+  background: var(--nav-bg);
   position: sticky;
   top: 0;
   z-index: 10;
@@ -105,7 +119,7 @@ a {
   width: 320px;
   border-right: 2px solid var(--border);
   position: relative;
-  background: var(--surface);
+  background: var(--zen-panel-bg);
 }
 
 .sidebar {
@@ -174,7 +188,7 @@ a {
 }
 
 .sidebar__tabs button.is-active {
-  background: var(--accent);
+  background: var(--primary);
   color: #fff;
 }
 
@@ -247,8 +261,8 @@ a {
   font-size: 11px;
   padding: 4px 8px;
   border-radius: 999px;
-  background: var(--accent2);
-  color: #2b1b00;
+  background: var(--secondary);
+  color: var(--secondary-contrast);
   font-weight: 600;
 }
 
@@ -330,7 +344,7 @@ a {
   padding: 8px;
   border-radius: var(--radius);
   border: 2px solid var(--border);
-  background: var(--surface);
+  background: var(--writing-bg);
   box-shadow: var(--shadow);
 }
 
@@ -346,14 +360,15 @@ a {
   padding: 6px 8px;
   border-radius: var(--radius-sm);
   border: 2px solid var(--border);
-  background: var(--surface2);
+  background: var(--secondary);
+  color: var(--secondary-contrast);
   font-weight: 600;
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .toolbar__button.is-active {
-  background: var(--accent);
+  background: var(--primary);
   color: #fff;
 }
 
@@ -379,7 +394,7 @@ a {
   padding: 24px;
   border-radius: var(--radius);
   border: 2px solid var(--border);
-  background: var(--surface);
+  background: var(--writing-bg);
   min-height: 60vh;
   box-shadow: var(--shadow);
 }
@@ -451,7 +466,7 @@ a {
 }
 
 .button--primary {
-  background: var(--accent);
+  background: var(--primary);
   color: #fff;
 }
 
@@ -460,8 +475,8 @@ a {
 }
 
 .button--danger {
-  background: #ff5c70;
-  color: #1e0d13;
+  background: var(--secondary);
+  color: var(--secondary-contrast);
 }
 
 .icon-button {
@@ -506,6 +521,63 @@ input:focus-visible {
   border-radius: 12px;
   border: 2px solid var(--border);
   background: var(--surface2);
+}
+
+.theme-modal__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.theme-modal__header h2 {
+  margin: 0;
+}
+
+.theme-modal__header p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.theme-modal__grid {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.theme-modal__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  font-weight: 600;
+}
+
+.theme-modal__inputs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.theme-modal__inputs input[type='text'] {
+  width: 120px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 2px solid var(--border);
+  background: var(--surface2);
+  font-weight: 600;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.theme-modal__inputs input[type='color'] {
+  width: 44px;
+  height: 40px;
+  padding: 0;
+  border-radius: 10px;
+  border: 2px solid var(--border);
+  background: transparent;
+  margin: 0;
 }
 
 .modal__actions {

@@ -1,9 +1,10 @@
-import type { Note, ThemeMode } from '../types'
+import type { Note, ThemeColors, ThemeMode } from '../types'
 import { extractTags } from './tagging'
 
 const NOTES_KEY = 'notesv2.notes'
 const ACTIVE_KEY = 'notesv2.active'
 const THEME_KEY = 'notesv2.theme'
+const THEME_COLORS_KEY = 'notesv2.theme.colors'
 
 export const loadNotes = (): Note[] => {
   const raw = localStorage.getItem(NOTES_KEY)
@@ -43,4 +44,24 @@ export const loadTheme = (): ThemeMode => {
 
 export const saveTheme = (mode: ThemeMode) => {
   localStorage.setItem(THEME_KEY, mode)
+}
+
+export const loadThemeColors = (): Partial<ThemeColors> => {
+  const raw = localStorage.getItem(THEME_COLORS_KEY)
+  if (!raw) return {}
+  try {
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return {}
+    return parsed as Partial<ThemeColors>
+  } catch {
+    return {}
+  }
+}
+
+export const saveThemeColors = (colors: Partial<ThemeColors>) => {
+  if (Object.keys(colors).length === 0) {
+    localStorage.removeItem(THEME_COLORS_KEY)
+    return
+  }
+  localStorage.setItem(THEME_COLORS_KEY, JSON.stringify(colors))
 }

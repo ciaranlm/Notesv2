@@ -9,3 +9,12 @@ export type Note = {
 }
 
 export type ThemeMode = 'light' | 'dark'
+
+export type ThemeColors = {
+  zenPanel: string
+  primaryButton: string
+  secondaryButton: string
+  pageBackground: string
+  navBackground: string
+  writingBackground: string
+}
