@@ -325,9 +325,9 @@ a {
 
 .toolbar {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
-  gap: 8px;
-  padding: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  gap: 6px;
+  padding: 8px;
   border-radius: var(--radius);
   border: 2px solid var(--border);
   background: var(--surface);
@@ -335,15 +335,15 @@ a {
 }
 
 .toolbar--compact {
-  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
 }
 
 .toolbar__button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 8px 10px;
+  gap: 4px;
+  padding: 6px 8px;
   border-radius: 10px;
   border: 2px solid var(--border);
   background: var(--surface2);
@@ -368,7 +368,11 @@ a {
 }
 
 .toolbar__label {
-  font-size: 12px;
+  font-size: 11px;
+}
+
+.toolbar--compact .toolbar__label {
+  display: none;
 }
 
 .editor-canvas {
