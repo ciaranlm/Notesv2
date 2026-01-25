@@ -11,6 +11,7 @@ import TurndownService from 'turndown'
 
 import { Toolbar } from './components/Toolbar'
 import { Sidebar } from './components/Sidebar'
+import { SlashCommands } from './extensions/slashCommands'
 import type { Note, ThemeMode } from './types'
 import { loadActiveId, loadNotes, loadTheme, saveActiveId, saveNotes, saveTheme } from './utils/storage'
 import { extractTags, stripHtml } from './utils/tagging'
@@ -113,6 +114,7 @@ const App = () => {
       Placeholder.configure({
         placeholder: 'Start writing, the canvas is yours...',
       }),
+      SlashCommands,
     ],
     content: activeNote?.content ?? '<p></p>',
     autofocus: 'start',
