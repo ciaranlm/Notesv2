@@ -4,7 +4,7 @@ A local-first, retro-modern notes app with a rich text editor, autosave, and fas
 
 ## Features
 - TipTap editor with headings, lists, checklists, code blocks, quotes, links, bold/italic/underline.
-- Local-first autosave to `localStorage`.
+- Local-first autosave to `localStorage`.  
 - Notes, trash, restore, export (Markdown/HTML), and import (Markdown).
 - Light + dark themes with a retro-inspired design system.
 
