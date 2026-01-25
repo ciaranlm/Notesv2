@@ -50,6 +50,8 @@
 body {
   margin: 0;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
   background: var(--page-bg);
   color: var(--text);
 }
