@@ -131,7 +131,7 @@ export const Toolbar = ({ editor, compact }: { editor: Editor; compact: boolean 
           <span className="toolbar__icon" aria-hidden="true">
             {labelFor(item.id)}
           </span>
-          <span className="toolbar__label">{item.label}</span>
+          {!compact && <span className="toolbar__label">{item.label}</span>}
         </button>
       ))}
     </div>
