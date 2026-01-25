@@ -456,14 +456,6 @@ const App = () => {
           <button type="button" className="button button--ghost" onClick={() => setThemeOpen(true)}>
             Theme
           </button>
-          <button
-            type="button"
-            className="button button--ghost"
-            onClick={() => setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))}
-            aria-label="Toggle theme"
-          >
-            {theme === 'light' ? 'Dark mode' : 'Light mode'}
-          </button>
         </div>
       </header>
 
