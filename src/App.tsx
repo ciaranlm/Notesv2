@@ -201,13 +201,21 @@ const App = () => {
 
   const filteredNotes = useMemo(() => {
     const query = search.trim().toLowerCase()
+    const tagMatches = Array.from(query.matchAll(/#([a-z0-9-]+)/g), (match) => match[1])
+    const textQuery = query.replace(/#([a-z0-9-]+)/g, '').trim()
     return notes
       .filter((note) => (view === 'trash' ? note.trashedAt : !note.trashedAt))
       .filter((note) => {
         if (!query) return true
+        const noteTags = note.tags.map((tag) => tag.toLowerCase())
+        const matchesTagFilter =
+          tagMatches.length === 0 || tagMatches.every((tag) => noteTags.includes(tag))
+        if (!matchesTagFilter) return false
+        if (!textQuery) return true
         return (
-          note.title.toLowerCase().includes(query) ||
-          stripHtml(note.content).toLowerCase().includes(query)
+          note.title.toLowerCase().includes(textQuery) ||
+          stripHtml(note.content).toLowerCase().includes(textQuery) ||
+          noteTags.some((tag) => tag.includes(textQuery))
         )
       })
       .sort((a, b) => b.updatedAt - a.updatedAt)
