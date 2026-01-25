@@ -166,7 +166,7 @@ a {
 .sidebar__tabs button {
   flex: 1;
   padding: 8px 12px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border: 2px solid var(--border);
   background: var(--surface2);
   font-weight: 600;
@@ -344,7 +344,7 @@ a {
   justify-content: center;
   gap: 4px;
   padding: 6px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   border: 2px solid var(--border);
   background: var(--surface2);
   font-weight: 600;
@@ -436,7 +436,7 @@ a {
 .button,
 .icon-button {
   padding: 8px 14px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border: 2px solid var(--border);
   background: var(--surface2);
   font-weight: 600;
