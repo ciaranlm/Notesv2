@@ -98,6 +98,15 @@ export const Sidebar = ({
                 <div>
                   <p className="note-card__title">{note.title || 'Untitled note'}</p>
                   <p className="note-card__meta">Last edit {formatDate(note.updatedAt)}</p>
+                  {note.tags.length > 0 && (
+                    <div className="note-card__tags" aria-label="Tags">
+                      {note.tags.map((tag) => (
+                        <span key={tag} className="note-card__tag">
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </button>
               {view === 'notes' ? (

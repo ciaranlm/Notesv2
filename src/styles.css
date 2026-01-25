@@ -227,6 +227,22 @@ a {
   color: var(--muted);
 }
 
+.note-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.note-card__tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
 .note-card__status {
   font-size: 11px;
   padding: 4px 8px;
