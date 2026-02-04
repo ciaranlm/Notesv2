@@ -273,6 +273,27 @@ export const App = () => {
     void persistNote(note)
   }, 400)
 
+  const syncEditorContent = useCallback(() => {
+    const editor = editorRef.current
+    const activeNote = currentNoteRef.current
+    if (!editor || !activeNote) return
+    const normalizedContent = normalizeContent(editor.innerHTML)
+    if (normalizedContent === activeNote.content) return
+    const timestamp = now()
+    const updatedNote = {
+      ...activeNote,
+      content: normalizedContent,
+      updatedAt: timestamp,
+      stats: {
+        wordCount: getWordCountFromContent(normalizedContent),
+        editCount: (activeNote.stats?.editCount ?? 0) + 1,
+        lastEditedAt: timestamp,
+      },
+    }
+    setNotes((prev) => prev.map((note) => (note.id === updatedNote.id ? updatedNote : note)))
+    void persistNote(updatedNote)
+  }, [persistNote])
+
   const handleContentChange = (value: string) => {
     assert(currentNote, 'No active note')
     const normalizedContent = normalizeContent(value)
@@ -725,9 +746,7 @@ export const App = () => {
                 role="menuitem"
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => {
-                  if (currentNoteRef.current) {
-                    flushSave(currentNoteRef.current)
-                  }
+                  syncEditorContent()
                   setView('calendar')
                   setIsMenuOpen(false)
                   menuButtonRef.current?.focus()
