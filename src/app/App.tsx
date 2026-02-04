@@ -19,9 +19,26 @@ const createEmptyNote = (): Note => {
   }
 }
 
+const getPlainTextFromContent = (content: string) =>
+  content
+    .replace(/<br\s*\/?\s*>/gi, '\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<div[^>]*>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+
+const normalizeContent = (content: string) => {
+  const trimmed = content.trim()
+  if (trimmed === '<br>' || trimmed === '<div><br></div>' || trimmed === '<div></div>') {
+    return ''
+  }
+  return content
+}
+
 const deriveTitle = (note: Note) => {
   if (note.titleOverride?.trim()) return note.titleOverride.trim()
-  const line = note.content.split('\n').find((value) => value.trim().length > 0)
+  const plainText = getPlainTextFromContent(note.content)
+  const line = plainText.split('\n').find((value) => value.trim().length > 0)
   if (line) return line.trim()
   return 'Untitled'
 }
@@ -78,7 +95,7 @@ export const App = () => {
 
   const storageRef = useRef<Awaited<ReturnType<typeof getStorage>> | null>(null)
   const currentNoteRef = useRef<Note | null>(null)
-  const editorRef = useRef<HTMLTextAreaElement>(null)
+  const editorRef = useRef<HTMLDivElement>(null)
   const wordCountTimeout = useRef<number | null>(null)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -192,65 +209,56 @@ export const App = () => {
 
   const handleContentChange = (value: string) => {
     assert(currentNote, 'No active note')
-    const updatedNote = { ...currentNote, content: value, updatedAt: now() }
+    const normalizedContent = normalizeContent(value)
+    const updatedNote = { ...currentNote, content: normalizedContent, updatedAt: now() }
     setNotes((prev) =>
       prev.map((note) => (note.id === updatedNote.id ? updatedNote : note)),
     )
     scheduleSave(updatedNote)
   }
 
-  const applyWrapFormatting = (prefix: string, suffix = prefix, placeholder = '') => {
+  const applyInlineFormatting = (command: 'bold' | 'italic' | 'strikeThrough' | 'underline') => {
     const editor = editorRef.current
     if (!editor) return
-    const { selectionStart, selectionEnd, value } = editor
-    const selectedText = value.slice(selectionStart, selectionEnd)
-    const content = selectedText || placeholder
-    const replacement = `${prefix}${content}${suffix}`
-    editor.setRangeText(replacement, selectionStart, selectionEnd, 'select')
-    if (selectedText.length === 0 && placeholder.length === 0) {
-      const cursor = selectionStart + prefix.length
-      editor.setSelectionRange(cursor, cursor)
-    } else {
-      const rangeStart = selectionStart + prefix.length
-      const rangeEnd = rangeStart + content.length
-      editor.setSelectionRange(rangeStart, rangeEnd)
-    }
-    handleContentChange(editor.value)
     editor.focus()
+    document.execCommand(command)
+    handleContentChange(editor.innerHTML)
   }
 
   const applyLinkFormatting = () => {
     const editor = editorRef.current
     if (!editor) return
-    const { selectionStart, selectionEnd, value } = editor
-    const selectedText = value.slice(selectionStart, selectionEnd)
-    const linkText = selectedText || 'link text'
-    const linkTarget = 'https://'
-    const replacement = `[${linkText}](${linkTarget})`
-    editor.setRangeText(replacement, selectionStart, selectionEnd, 'select')
-    const urlStart = selectionStart + linkText.length + 3
-    const urlEnd = urlStart + linkTarget.length
-    editor.setSelectionRange(urlStart, urlEnd)
-    handleContentChange(editor.value)
     editor.focus()
+    const selection = window.getSelection()
+    if (!selection || selection.rangeCount === 0) return
+    const range = selection.getRangeAt(0)
+    if (!editor.contains(range.commonAncestorContainer)) return
+    const linkTarget = 'https://'
+    if (range.collapsed) {
+      const link = document.createElement('a')
+      link.href = linkTarget
+      link.textContent = 'link text'
+      range.insertNode(link)
+      const newRange = document.createRange()
+      newRange.selectNodeContents(link)
+      selection.removeAllRanges()
+      selection.addRange(newRange)
+    } else {
+      document.execCommand('createLink', false, linkTarget)
+    }
+    handleContentChange(editor.innerHTML)
   }
 
-  const applyLinePrefix = (prefix: string) => {
+  const applyBlockFormatting = (command: 'formatBlock' | 'insertUnorderedList' | 'insertOrderedList') => {
     const editor = editorRef.current
     if (!editor) return
-    const { selectionStart, selectionEnd, value } = editor
-    const blockStart = value.lastIndexOf('\n', selectionStart - 1) + 1
-    const blockEndIndex = value.indexOf('\n', selectionEnd)
-    const blockEnd = blockEndIndex === -1 ? value.length : blockEndIndex
-    const block = value.slice(blockStart, blockEnd)
-    const updated = block
-      .split('\n')
-      .map((line) => (line.startsWith(prefix) ? line : `${prefix}${line}`))
-      .join('\n')
-    editor.setRangeText(updated, blockStart, blockEnd, 'select')
-    editor.setSelectionRange(blockStart, blockStart + updated.length)
-    handleContentChange(editor.value)
     editor.focus()
+    if (command === 'formatBlock') {
+      document.execCommand(command, false, 'h1')
+    } else {
+      document.execCommand(command)
+    }
+    handleContentChange(editor.innerHTML)
   }
 
   const handleSelectNote = async (id: string) => {
@@ -329,7 +337,7 @@ export const App = () => {
   const handleExportCurrent = () => {
     if (!currentNote) return
     const filename = `${deriveTitle(currentNote).replace(/[^a-z0-9-_]+/gi, '_')}.txt`
-    const blob = new Blob([currentNote.content], { type: 'text/plain' })
+    const blob = new Blob([getPlainTextFromContent(currentNote.content)], { type: 'text/plain' })
     exportFile(blob, filename)
   }
 
@@ -508,9 +516,17 @@ export const App = () => {
 
   const wordCount = useMemo(() => {
     if (!currentNote) return 0
-    return currentNote.content.trim().length === 0
-      ? 0
-      : currentNote.content.trim().split(/\s+/).length
+    const plainText = getPlainTextFromContent(currentNote.content).trim()
+    return plainText.length === 0 ? 0 : plainText.split(/\s+/).length
+  }, [currentNote])
+
+  useEffect(() => {
+    const editor = editorRef.current
+    if (!editor) return
+    const nextContent = currentNote?.content ?? ''
+    if (editor.innerHTML !== nextContent) {
+      editor.innerHTML = nextContent
+    }
   }, [currentNote])
 
   return (
@@ -553,7 +569,7 @@ export const App = () => {
               type="button"
               className="formatting-item is-bold"
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => applyWrapFormatting('**')}
+              onClick={() => applyInlineFormatting('bold')}
             >
               B
             </button>
@@ -561,7 +577,7 @@ export const App = () => {
               type="button"
               className="formatting-item"
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => applyWrapFormatting('*')}
+              onClick={() => applyInlineFormatting('italic')}
             >
               I
             </button>
@@ -569,7 +585,7 @@ export const App = () => {
               type="button"
               className="formatting-item is-strike"
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => applyWrapFormatting('~~')}
+              onClick={() => applyInlineFormatting('strikeThrough')}
             >
               S
             </button>
@@ -577,7 +593,7 @@ export const App = () => {
               type="button"
               className="formatting-item is-underline"
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => applyWrapFormatting('<u>', '</u>', 'underline')}
+              onClick={() => applyInlineFormatting('underline')}
             >
               U
             </button>
@@ -594,7 +610,7 @@ export const App = () => {
               type="button"
               className="formatting-item"
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => applyLinePrefix('# ')}
+              onClick={() => applyBlockFormatting('formatBlock')}
             >
               H1
             </button>
@@ -602,7 +618,7 @@ export const App = () => {
               type="button"
               className="formatting-item"
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => applyLinePrefix('- ')}
+              onClick={() => applyBlockFormatting('insertUnorderedList')}
             >
               List
             </button>
@@ -610,19 +626,21 @@ export const App = () => {
               type="button"
               className="formatting-item"
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => applyLinePrefix('1. ')}
+              onClick={() => applyBlockFormatting('insertOrderedList')}
             >
               1.
             </button>
           </div>
         ) : null}
         <main className="editor-shell">
-          <textarea
+          <div
             ref={editorRef}
             className="editor"
-            value={currentNote?.content ?? ''}
-            placeholder=""
-            onChange={(event) => handleContentChange(event.target.value)}
+            contentEditable
+            role="textbox"
+            aria-multiline="true"
+            suppressContentEditableWarning
+            onInput={(event) => handleContentChange((event.target as HTMLDivElement).innerHTML)}
             onFocus={() => setUiVisible(true)}
           />
         </main>
