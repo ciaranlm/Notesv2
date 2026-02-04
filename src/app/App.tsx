@@ -163,6 +163,60 @@ export const App = () => {
     scheduleSave(updatedNote)
   }
 
+  const applyWrapFormatting = (prefix: string, suffix = prefix, placeholder = '') => {
+    const editor = editorRef.current
+    if (!editor) return
+    const { selectionStart, selectionEnd, value } = editor
+    const selectedText = value.slice(selectionStart, selectionEnd)
+    const content = selectedText || placeholder
+    const replacement = `${prefix}${content}${suffix}`
+    editor.setRangeText(replacement, selectionStart, selectionEnd, 'select')
+    if (selectedText.length === 0 && placeholder.length === 0) {
+      const cursor = selectionStart + prefix.length
+      editor.setSelectionRange(cursor, cursor)
+    } else {
+      const rangeStart = selectionStart + prefix.length
+      const rangeEnd = rangeStart + content.length
+      editor.setSelectionRange(rangeStart, rangeEnd)
+    }
+    handleContentChange(editor.value)
+    editor.focus()
+  }
+
+  const applyLinkFormatting = () => {
+    const editor = editorRef.current
+    if (!editor) return
+    const { selectionStart, selectionEnd, value } = editor
+    const selectedText = value.slice(selectionStart, selectionEnd)
+    const linkText = selectedText || 'link text'
+    const linkTarget = 'https://'
+    const replacement = `[${linkText}](${linkTarget})`
+    editor.setRangeText(replacement, selectionStart, selectionEnd, 'select')
+    const urlStart = selectionStart + linkText.length + 3
+    const urlEnd = urlStart + linkTarget.length
+    editor.setSelectionRange(urlStart, urlEnd)
+    handleContentChange(editor.value)
+    editor.focus()
+  }
+
+  const applyLinePrefix = (prefix: string) => {
+    const editor = editorRef.current
+    if (!editor) return
+    const { selectionStart, selectionEnd, value } = editor
+    const blockStart = value.lastIndexOf('\n', selectionStart - 1) + 1
+    const blockEndIndex = value.indexOf('\n', selectionEnd)
+    const blockEnd = blockEndIndex === -1 ? value.length : blockEndIndex
+    const block = value.slice(blockStart, blockEnd)
+    const updated = block
+      .split('\n')
+      .map((line) => (line.startsWith(prefix) ? line : `${prefix}${line}`))
+      .join('\n')
+    editor.setRangeText(updated, blockStart, blockEnd, 'select')
+    editor.setSelectionRange(blockStart, blockStart + updated.length)
+    handleContentChange(editor.value)
+    editor.focus()
+  }
+
   const handleSelectNote = async (id: string) => {
     setCurrentNoteId(id)
     const storage = storageRef.current
@@ -435,19 +489,76 @@ export const App = () => {
             aria-expanded={isFormattingOpen}
             onClick={() => setIsFormattingOpen((value) => !value)}
           >
-            ☰
+            <span aria-hidden="true">☰</span>
+            <span>Toggle formatting</span>
           </button>
         </div>
         <div className={`formatting-panel${isFormattingOpen ? ' is-open' : ''}`}>
-          <span className="formatting-item is-bold">B</span>
-          <span className="formatting-item">/</span>
-          <span className="formatting-item is-strike">S</span>
-          <span className="formatting-item is-underline">U</span>
-          <span className="formatting-item">Link</span>
+          <button
+            type="button"
+            className="formatting-item is-bold"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => applyWrapFormatting('**')}
+          >
+            B
+          </button>
+          <button
+            type="button"
+            className="formatting-item"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => applyWrapFormatting('*')}
+          >
+            I
+          </button>
+          <button
+            type="button"
+            className="formatting-item is-strike"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => applyWrapFormatting('~~')}
+          >
+            S
+          </button>
+          <button
+            type="button"
+            className="formatting-item is-underline"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => applyWrapFormatting('<u>', '</u>', 'underline')}
+          >
+            U
+          </button>
+          <button
+            type="button"
+            className="formatting-item"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={applyLinkFormatting}
+          >
+            Link
+          </button>
           <span className="formatting-divider" aria-hidden="true" />
-          <span className="formatting-item">H1</span>
-          <span className="formatting-item">List</span>
-          <span className="formatting-item">1.</span>
+          <button
+            type="button"
+            className="formatting-item"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => applyLinePrefix('# ')}
+          >
+            H1
+          </button>
+          <button
+            type="button"
+            className="formatting-item"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => applyLinePrefix('- ')}
+          >
+            List
+          </button>
+          <button
+            type="button"
+            className="formatting-item"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => applyLinePrefix('1. ')}
+          >
+            1.
+          </button>
         </div>
         <main className="editor-shell">
           <textarea
