@@ -1,0 +1,133 @@
+.palette-overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  z-index: 20;
+}
+
+.palette {
+  width: min(720px, 92vw);
+  background: var(--panel);
+  border-radius: 16px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.15);
+  padding: 16px;
+  backdrop-filter: blur(12px);
+  border: 1px solid color-mix(in srgb, var(--text-muted) 20%, transparent);
+}
+
+.palette-input {
+  width: 100%;
+  border: none;
+  outline: none;
+  font-size: 16px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  color: var(--text);
+}
+
+.palette-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.palette-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.palette-item.is-active {
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.palette-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.palette-note__title {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.palette-note__current {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.palette-note__snippet {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.palette-note__snippet mark {
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+  color: var(--text);
+}
+
+.palette-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.palette-footer {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.palette-empty {
+  padding: 16px;
+  color: var(--text-muted);
+}
+
+.palette-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.palette-confirm__title {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.palette-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.palette-actions button {
+  border: none;
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.palette-file {
+  display: none;
+}
+
+.palette-error {
+  margin-top: 8px;
+  color: #d34b4b;
+  font-size: 12px;
+}

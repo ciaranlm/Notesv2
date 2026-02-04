@@ -1,36 +1,22 @@
 {
-  "name": "notesv2",
+  "name": "blank-page-notes",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "typecheck": "tsc -b",
+    "build": "tsc -b && vite build",
     "preview": "vite preview"
   },
-  "engines": {
-    "node": ">=18.0.0"
-  },
   "dependencies": {
-    "@tiptap/extension-link": "^2.2.1",
-    "@tiptap/extension-placeholder": "^2.2.1",
-    "@tiptap/extension-task-item": "^2.2.1",
-    "@tiptap/extension-task-list": "^2.2.1",
-    "@tiptap/extension-underline": "^2.2.1",
-    "@tiptap/react": "^2.2.1",
-    "@tiptap/starter-kit": "^2.2.1",
-    "marked": "^12.0.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "turndown": "^7.1.2"
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
-    "@types/turndown": "^5.0.4",
-    "@vitejs/plugin-react": "^4.2.0",
-    "typescript": "^5.2.2",
-    "vite": "^5.0.8"
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.2"
   }
 }
