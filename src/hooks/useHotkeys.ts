@@ -6,8 +6,7 @@ type Hotkey = {
   allowInInput?: boolean
 }
 
-const normalizeCombo = (combo: string) => combo.toLowerCase().replace(/
-/g, '').trim()
+const normalizeCombo = (combo: string) => combo.toLowerCase().replace(/\s+/g, '').trim()
 
 const matchesCombo = (event: KeyboardEvent, combo: string) => {
   const parts = normalizeCombo(combo).split('+')
