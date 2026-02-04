@@ -3,8 +3,10 @@
 A blank.page-inspired minimalist writing app. Open it and start typing on an instant blank canvas—no accounts, no tracking, and no distractions. Everything stays local-first in your browser storage.
 
 ## Features
+- Daily pages that reset each day automatically.
+- Calendar activity view with a GitHub-style heatmap for daily writing.
 - Instant blank canvas on first paint.
-- Single current note with autosave (debounced 400ms).
+- Multiple notes (freeform notes + daily pages) with autosave (debounced 400ms).
 - Command palette for all actions (Cmd/Ctrl + K or P).
 - Search across titles and full note content.
 - Dark/light mode toggle with system default.
@@ -32,7 +34,9 @@ Blank Page Notes is local-only. No analytics, no network calls, and no accounts.
   - Database name: `notes_db`
   - Stores: `notes` (keyPath `id`), `meta` (keyPath `key`)
 - **Meta keys**
-  - `lastOpenNoteId`: remember the last open note
+  - `lastOpenNoteId`: remember the last open freeform note
+  - `lastOpenMode`: `daily` or `note`
+  - `lastOpenDateKey`: remember the last open daily page
   - `theme`: `system`, `light`, or `dark`
 - **Fallback**: If IndexedDB is unavailable, the app falls back to localStorage. If both fail, it keeps notes in memory for the session.
 
@@ -56,5 +60,20 @@ Note = {
   content: string
   createdAt: number
   updatedAt: number
+  type?: 'daily' | 'note'
+  dateKey?: string
+  stats?: {
+    wordCount?: number
+    lastEditedAt?: number
+    editCount?: number
+  }
 }
 ```
+
+## Daily Pages
+- Each day gets its own note keyed by `YYYY-MM-DD` in local time.
+- Daily pages are stored alongside freeform notes and appear in the calendar activity view.
+
+## Calendar view
+- Open **Calendar** from the menu to see activity for the past year.
+- Click a day to jump to that daily page.

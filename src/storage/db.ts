@@ -1,4 +1,6 @@
-import type { MetaKey, Note, ThemePreference } from './types'
+import type { DailyNoteSummary, MetaKey, Note, ThemePreference } from './types'
+import { getDailyNoteId } from '../utils/dates'
+import { getWordCountFromContent } from '../utils/content'
 
 const DB_NAME = 'notes_db'
 const DB_VERSION = 1
@@ -14,6 +16,9 @@ export type StorageDriver = {
   deleteNote: (id: string) => Promise<void>
   bulkSaveNotes: (notes: Note[]) => Promise<void>
   clearAllNotes: () => Promise<void>
+  getDailyNote: (dateKey: string) => Promise<Note | undefined>
+  upsertDailyNote: (note: Note) => Promise<void>
+  listDailyNotesInRange: (startDateKey: string, endDateKey: string) => Promise<DailyNoteSummary[]>
   getMeta: (key: MetaKey) => Promise<string | undefined>
   setMeta: (key: MetaKey, value: string) => Promise<void>
 }
@@ -59,6 +64,17 @@ const runTransaction = <T>(
     request.onerror = () => reject(request.error)
   })
 
+const extractDateKey = (note: Note) => {
+  if (note.dateKey) return note.dateKey
+  if (note.id.startsWith('daily:')) {
+    return note.id.replace('daily:', '')
+  }
+  return undefined
+}
+
+const getDailyWordCount = (note: Note) =>
+  note.stats?.wordCount ?? getWordCountFromContent(note.content ?? '')
+
 const createIndexedDbDriver = async (): Promise<StorageDriver> => {
   const db = await openDb()
 
@@ -86,6 +102,22 @@ const createIndexedDbDriver = async (): Promise<StorageDriver> => {
     },
     async clearAllNotes() {
       await runTransaction(db, NOTES_STORE, 'readwrite', (store) => store.clear())
+    },
+    async getDailyNote(dateKey) {
+      return runTransaction(db, NOTES_STORE, 'readonly', (store) => store.get(getDailyNoteId(dateKey)))
+    },
+    async upsertDailyNote(note) {
+      await runTransaction(db, NOTES_STORE, 'readwrite', (store) => store.put(note))
+    },
+    async listDailyNotesInRange(startDateKey, endDateKey) {
+      const notes = await runTransaction<Note[]>(db, NOTES_STORE, 'readonly', (store) => store.getAll())
+      return notes
+        .filter((note) => (note.type === 'daily' || note.id.startsWith('daily:')) && extractDateKey(note))
+        .map((note) => ({
+          dateKey: extractDateKey(note)!,
+          wordCount: getDailyWordCount(note),
+        }))
+        .filter((note) => note.dateKey >= startDateKey && note.dateKey <= endDateKey)
     },
     async getMeta(key) {
       const result = await runTransaction<{ key: string; value: string } | undefined>(
@@ -157,6 +189,28 @@ const createLocalStorageDriver = (): StorageDriver => ({
   async clearAllNotes() {
     setLocalNotes([])
   },
+  async getDailyNote(dateKey) {
+    return getLocalNotes().find((note) => note.id === getDailyNoteId(dateKey))
+  },
+  async upsertDailyNote(note) {
+    const notes = getLocalNotes()
+    const index = notes.findIndex((item) => item.id === note.id)
+    if (index >= 0) {
+      notes[index] = note
+    } else {
+      notes.push(note)
+    }
+    setLocalNotes(notes)
+  },
+  async listDailyNotesInRange(startDateKey, endDateKey) {
+    return getLocalNotes()
+      .filter((note) => (note.type === 'daily' || note.id.startsWith('daily:')) && extractDateKey(note))
+      .map((note) => ({
+        dateKey: extractDateKey(note)!,
+        wordCount: getDailyWordCount(note),
+      }))
+      .filter((note) => note.dateKey >= startDateKey && note.dateKey <= endDateKey)
+  },
   async getMeta(key) {
     const meta = getLocalMeta()
     return meta[key]
@@ -195,6 +249,26 @@ const createMemoryDriver = (): StorageDriver => {
     },
     async clearAllNotes() {
       notes = []
+    },
+    async getDailyNote(dateKey) {
+      return notes.find((note) => note.id === getDailyNoteId(dateKey))
+    },
+    async upsertDailyNote(note) {
+      const index = notes.findIndex((item) => item.id === note.id)
+      if (index >= 0) {
+        notes[index] = note
+      } else {
+        notes = [...notes, note]
+      }
+    },
+    async listDailyNotesInRange(startDateKey, endDateKey) {
+      return notes
+        .filter((note) => (note.type === 'daily' || note.id.startsWith('daily:')) && extractDateKey(note))
+        .map((note) => ({
+          dateKey: extractDateKey(note)!,
+          wordCount: getDailyWordCount(note),
+        }))
+        .filter((note) => note.dateKey >= startDateKey && note.dateKey <= endDateKey)
     },
     async getMeta(key) {
       return meta[key]

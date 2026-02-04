@@ -1,10 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { CalendarView } from '../components/CalendarView'
 import { CommandPalette } from '../components/CommandPalette'
 import { SaveIndicator } from '../components/SaveIndicator'
 import { useDebouncedCallback } from '../hooks/useDebouncedCallback'
 import { useHotkeys } from '../hooks/useHotkeys'
 import { getStorage, sanitizeTheme } from '../storage/db'
-import type { Note, ThemePreference } from '../storage/types'
+import type { Note, NoteType, ThemePreference } from '../storage/types'
+import { getPlainTextFromContent, getWordCountFromContent } from '../utils/content'
+import { formatFullDate, getCalendarRange, getDailyNoteId, getTodayKey, parseDateKey } from '../utils/dates'
 import { createId } from '../utils/id'
 import { now } from '../utils/time'
 import { assert } from '../utils/assertions'
@@ -16,16 +19,22 @@ const createEmptyNote = (): Note => {
     content: '',
     createdAt: timestamp,
     updatedAt: timestamp,
+    type: 'note',
   }
 }
 
-const getPlainTextFromContent = (content: string) =>
-  content
-    .replace(/<br\s*\/?\s*>/gi, '\n')
-    .replace(/<\/div>/gi, '\n')
-    .replace(/<div[^>]*>/gi, '')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ')
+const createDailyNote = (dateKey: string): Note => {
+  const timestamp = now()
+  return {
+    id: getDailyNoteId(dateKey),
+    content: '',
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    type: 'daily',
+    dateKey,
+    stats: { wordCount: 0, editCount: 0, lastEditedAt: timestamp },
+  }
+}
 
 const normalizeContent = (content: string) => {
   const trimmed = content.trim()
@@ -35,7 +44,22 @@ const normalizeContent = (content: string) => {
   return content
 }
 
+const normalizeNoteType = (note: Note): NoteType =>
+  note.type ?? (note.id.startsWith('daily:') || note.dateKey ? 'daily' : 'note')
+
+const normalizeNote = (note: Note): Note => {
+  const type = normalizeNoteType(note)
+  const dateKey =
+    note.dateKey ?? (type === 'daily' && note.id.startsWith('daily:') ? note.id.replace('daily:', '') : undefined)
+  return { ...note, type, dateKey }
+}
+
+const getDailyTitle = (dateKey: string) => formatFullDate(parseDateKey(dateKey))
+
 const deriveTitle = (note: Note) => {
+  if (normalizeNoteType(note) === 'daily' && note.dateKey) {
+    return getDailyTitle(note.dateKey)
+  }
   if (note.titleOverride?.trim()) return note.titleOverride.trim()
   const plainText = getPlainTextFromContent(note.content)
   const line = plainText.split('\n').find((value) => value.trim().length > 0)
@@ -80,6 +104,9 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 export const App = () => {
   const [notes, setNotes] = useState<Note[]>([])
   const [currentNoteId, setCurrentNoteId] = useState<string | null>(null)
+  const [currentMode, setCurrentMode] = useState<'daily' | 'note'>('daily')
+  const [currentDateKey, setCurrentDateKey] = useState(() => getTodayKey())
+  const [view, setView] = useState<'editor' | 'calendar'>('editor')
   const [isPaletteOpen, setIsPaletteOpen] = useState(false)
   const [paletteInitialMode, setPaletteInitialMode] = useState<'default' | 'confirm-delete'>('default')
   const [themePreference, setThemePreference] = useState<ThemePreference>('system')
@@ -95,6 +122,7 @@ export const App = () => {
 
   const storageRef = useRef<Awaited<ReturnType<typeof getStorage>> | null>(null)
   const currentNoteRef = useRef<Note | null>(null)
+  const notesRef = useRef<Note[]>([])
   const editorRef = useRef<HTMLDivElement>(null)
   const wordCountTimeout = useRef<number | null>(null)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
@@ -108,6 +136,10 @@ export const App = () => {
   useEffect(() => {
     currentNoteRef.current = currentNote
   }, [currentNote])
+
+  useEffect(() => {
+    notesRef.current = notes
+  }, [notes])
 
   const applyTheme = useCallback((theme: ThemePreference) => {
     const root = document.documentElement
@@ -156,25 +188,47 @@ export const App = () => {
       const storage = await getStorage()
       if (!isMounted) return
       storageRef.current = storage
-      const [storedNotes, lastOpen, storedTheme] = await Promise.all([
+      const [storedNotes, lastOpen, lastOpenMode, lastOpenDateKey, storedTheme] = await Promise.all([
         storage.getAllNotes(),
         storage.getMeta('lastOpenNoteId'),
+        storage.getMeta('lastOpenMode'),
+        storage.getMeta('lastOpenDateKey'),
         storage.getMeta('theme'),
       ])
 
       const theme = sanitizeTheme(storedTheme)
       setThemePreference(theme)
 
-      let nextNotes = storedNotes
+      let nextNotes = storedNotes.map(normalizeNote)
+      const todayKey = getTodayKey()
+      if (!nextNotes.some((note) => note.type === 'daily' && note.dateKey === todayKey)) {
+        const dailyNote = createDailyNote(todayKey)
+        nextNotes = [dailyNote, ...nextNotes]
+        await storage.saveNote(dailyNote)
+      }
+
       if (nextNotes.length === 0) {
         const newNote = createEmptyNote()
         nextNotes = [newNote]
         await storage.saveNote(newNote)
-        await storage.setMeta('lastOpenNoteId', newNote.id)
-        setCurrentNoteId(newNote.id)
-      } else {
+      }
+
+      if (lastOpenMode === 'note' && lastOpen) {
         const noteToOpen = nextNotes.find((note) => note.id === lastOpen) ?? nextNotes[0]
+        setCurrentMode('note')
         setCurrentNoteId(noteToOpen.id)
+      } else {
+        const dateKey = lastOpenDateKey ?? todayKey
+        const dailyNoteId = getDailyNoteId(dateKey)
+        const dailyNote =
+          nextNotes.find((note) => note.id === dailyNoteId) ?? createDailyNote(dateKey)
+        if (!nextNotes.find((note) => note.id === dailyNoteId)) {
+          nextNotes = [dailyNote, ...nextNotes]
+          await storage.saveNote(dailyNote)
+        }
+        setCurrentMode('daily')
+        setCurrentDateKey(dateKey)
+        setCurrentNoteId(dailyNote.id)
       }
 
       setNotes(nextNotes.sort((a, b) => b.updatedAt - a.updatedAt))
@@ -185,6 +239,18 @@ export const App = () => {
       isMounted = false
     }
   }, [])
+
+  useEffect(() => {
+    const storage = storageRef.current
+    if (!storage || notes.length === 0) return
+    const todayKey = getTodayKey()
+    const hasToday = notes.some((note) => note.type === 'daily' && note.dateKey === todayKey)
+    if (!hasToday) {
+      const dailyNote = createDailyNote(todayKey)
+      setNotes((prev) => [dailyNote, ...prev])
+      void storage.saveNote(dailyNote)
+    }
+  }, [notes])
 
   useEffect(() => {
     if (!isPaletteOpen) {
@@ -210,7 +276,16 @@ export const App = () => {
   const handleContentChange = (value: string) => {
     assert(currentNote, 'No active note')
     const normalizedContent = normalizeContent(value)
-    const updatedNote = { ...currentNote, content: normalizedContent, updatedAt: now() }
+    const updatedNote = {
+      ...currentNote,
+      content: normalizedContent,
+      updatedAt: now(),
+      stats: {
+        wordCount: getWordCountFromContent(normalizedContent),
+        editCount: (currentNote.stats?.editCount ?? 0) + 1,
+        lastEditedAt: now(),
+      },
+    }
     setNotes((prev) =>
       prev.map((note) => (note.id === updatedNote.id ? updatedNote : note)),
     )
@@ -262,10 +337,13 @@ export const App = () => {
   }
 
   const handleSelectNote = async (id: string) => {
+    setCurrentMode('note')
     setCurrentNoteId(id)
+    setView('editor')
     const storage = storageRef.current
     if (storage) {
       await storage.setMeta('lastOpenNoteId', id)
+      await storage.setMeta('lastOpenMode', 'note')
     }
   }
 
@@ -274,9 +352,12 @@ export const App = () => {
     const newNote = createEmptyNote()
     setNotes((prev) => [newNote, ...prev])
     setCurrentNoteId(newNote.id)
+    setCurrentMode('note')
+    setView('editor')
     if (storage) {
       await storage.saveNote(newNote)
       await storage.setMeta('lastOpenNoteId', newNote.id)
+      await storage.setMeta('lastOpenMode', 'note')
     }
   }
 
@@ -302,7 +383,9 @@ export const App = () => {
         if (storage) {
           void storage.saveNote(newNote)
           void storage.setMeta('lastOpenNoteId', newNote.id)
+          void storage.setMeta('lastOpenMode', 'note')
         }
+        setCurrentMode('note')
         setCurrentNoteId(newNote.id)
         return [newNote]
       }
@@ -310,7 +393,9 @@ export const App = () => {
         setCurrentNoteId(remaining[0].id)
         if (storage) {
           void storage.setMeta('lastOpenNoteId', remaining[0].id)
+          void storage.setMeta('lastOpenMode', 'note')
         }
+        setCurrentMode('note')
       }
       return remaining
     })
@@ -352,7 +437,12 @@ export const App = () => {
   }
 
   const handleImportMerge = async (imported: Note[]) => {
-    const merged = mergeNotes(notes, imported)
+    let merged = mergeNotes(notes, imported.map(normalizeNote))
+    const todayKey = getTodayKey()
+    if (!merged.some((note) => note.type === 'daily' && note.dateKey === todayKey)) {
+      const dailyNote = createDailyNote(todayKey)
+      merged = [dailyNote, ...merged]
+    }
     setNotes(merged)
     const storage = storageRef.current
     if (storage) {
@@ -361,16 +451,30 @@ export const App = () => {
   }
 
   const handleImportReplace = async (imported: Note[]) => {
-    setNotes(imported)
-    if (imported[0]) {
-      setCurrentNoteId(imported[0].id)
+    const normalized = imported.map(normalizeNote)
+    setNotes(normalized)
+    const todayKey = getTodayKey()
+    const dailyNote = normalized.find((note) => note.type === 'daily' && note.dateKey === todayKey)
+    if (dailyNote) {
+      setCurrentMode('daily')
+      setCurrentDateKey(todayKey)
+      setCurrentNoteId(dailyNote.id)
+      setView('editor')
+    } else if (normalized[0]) {
+      setCurrentMode('note')
+      setCurrentNoteId(normalized[0].id)
+      setView('editor')
     }
     const storage = storageRef.current
     if (storage) {
       await storage.clearAllNotes()
-      await storage.bulkSaveNotes(imported)
-      if (imported[0]) {
-        await storage.setMeta('lastOpenNoteId', imported[0].id)
+      await storage.bulkSaveNotes(normalized)
+      if (dailyNote) {
+        await storage.setMeta('lastOpenMode', 'daily')
+        await storage.setMeta('lastOpenDateKey', todayKey)
+      } else if (normalized[0]) {
+        await storage.setMeta('lastOpenNoteId', normalized[0].id)
+        await storage.setMeta('lastOpenMode', 'note')
       }
     }
   }
@@ -496,6 +600,20 @@ export const App = () => {
   }, [flushSave])
 
   useEffect(() => {
+    if (view !== 'calendar') return
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setView('editor')
+      }
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => {
+      window.removeEventListener('keydown', handleEscape)
+    }
+  }, [view])
+
+  useEffect(() => {
     const showUi = () => {
       setUiVisible(true)
       if (wordCountTimeout.current) {
@@ -516,8 +634,7 @@ export const App = () => {
 
   const wordCount = useMemo(() => {
     if (!currentNote) return 0
-    const plainText = getPlainTextFromContent(currentNote.content).trim()
-    return plainText.length === 0 ? 0 : plainText.split(/\s+/).length
+    return getWordCountFromContent(currentNote.content)
   }, [currentNote])
 
   useEffect(() => {
@@ -528,6 +645,61 @@ export const App = () => {
       editor.innerHTML = nextContent
     }
   }, [currentNote])
+
+  const { startKey, endKey } = useMemo(() => getCalendarRange(), [])
+  const [activityMap, setActivityMap] = useState<Record<string, { wordCount: number; intensity: number }>>({})
+
+  useEffect(() => {
+    if (view !== 'calendar') return
+    const storage = storageRef.current
+    if (!storage) return
+    let active = true
+    const loadActivity = async () => {
+      const summaries = await storage.listDailyNotesInRange(startKey, endKey)
+      if (!active) return
+      const map: Record<string, { wordCount: number; intensity: number }> = {}
+      summaries.forEach((summary) => {
+        const wordCount = summary.wordCount
+        let intensity = 0
+        if (wordCount >= 1 && wordCount <= 50) intensity = 1
+        else if (wordCount <= 150) intensity = 2
+        else if (wordCount <= 400) intensity = 3
+        else if (wordCount > 400) intensity = 4
+        map[summary.dateKey] = { wordCount, intensity }
+      })
+      setActivityMap(map)
+    }
+    void loadActivity()
+    return () => {
+      active = false
+    }
+  }, [view, startKey, endKey, notes])
+
+  const handleSelectDate = async (dateKey: string) => {
+    const storage = storageRef.current
+    const dailyId = getDailyNoteId(dateKey)
+    let existing = notesRef.current.find((note) => note.id === dailyId)
+    if (!existing) {
+      existing = createDailyNote(dateKey)
+      setNotes((prev) => [existing!, ...prev])
+      if (storage) {
+        await storage.saveNote(existing)
+      }
+    }
+    setCurrentMode('daily')
+    setCurrentDateKey(dateKey)
+    setCurrentNoteId(dailyId)
+    if (storage) {
+      await storage.setMeta('lastOpenMode', 'daily')
+      await storage.setMeta('lastOpenDateKey', dateKey)
+    }
+    setView('editor')
+  }
+
+  const handleBackToToday = async () => {
+    const todayKey = getTodayKey()
+    await handleSelectDate(todayKey)
+  }
 
   return (
     <ErrorBoundary>
@@ -553,6 +725,37 @@ export const App = () => {
                 role="menuitem"
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => {
+                  if (currentNoteRef.current) {
+                    flushSave(currentNoteRef.current)
+                  }
+                  setView('calendar')
+                  setIsMenuOpen(false)
+                  menuButtonRef.current?.focus()
+                }}
+              >
+                Calendar
+              </button>
+              {view === 'calendar' ? (
+                <button
+                  type="button"
+                  className="menu-item"
+                  role="menuitem"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    void handleBackToToday()
+                    setIsMenuOpen(false)
+                    menuButtonRef.current?.focus()
+                  }}
+                >
+                  Back to today
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="menu-item"
+                role="menuitem"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
                   setIsFormattingVisible((value) => !value)
                   setIsMenuOpen(false)
                   menuButtonRef.current?.focus()
@@ -563,7 +766,7 @@ export const App = () => {
             </div>
           ) : null}
         </div>
-        {isFormattingVisible ? (
+        {isFormattingVisible && view === 'editor' ? (
           <div className="formatting-panel">
             <button
               type="button"
@@ -632,20 +835,32 @@ export const App = () => {
             </button>
           </div>
         ) : null}
-        <main className="editor-shell">
-          <div
-            ref={editorRef}
-            className="editor"
-            contentEditable
-            role="textbox"
-            aria-multiline="true"
-            suppressContentEditableWarning
-            onInput={(event) => handleContentChange((event.target as HTMLDivElement).innerHTML)}
-            onFocus={() => setUiVisible(true)}
+        {view === 'editor' ? (
+          <>
+            <main className="editor-shell">
+              <div
+                ref={editorRef}
+                className="editor"
+                contentEditable
+                role="textbox"
+                aria-multiline="true"
+                suppressContentEditableWarning
+                onInput={(event) => handleContentChange((event.target as HTMLDivElement).innerHTML)}
+                onFocus={() => setUiVisible(true)}
+              />
+            </main>
+            {uiVisible && !isPaletteOpen && (
+              <div className="word-count">{wordCount} words</div>
+            )}
+          </>
+        ) : (
+          <CalendarView
+            activityMap={activityMap}
+            selectedDateKey={currentMode === 'daily' ? currentDateKey : null}
+            onSelectDate={handleSelectDate}
+            onClose={() => setView('editor')}
+            onBackToToday={handleBackToToday}
           />
-        </main>
-        {uiVisible && !isPaletteOpen && (
-          <div className="word-count">{wordCount} words</div>
         )}
         <CommandPalette
           isOpen={isPaletteOpen}
