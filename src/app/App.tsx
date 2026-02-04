@@ -68,12 +68,20 @@ export const App = () => {
   const [themePreference, setThemePreference] = useState<ThemePreference>('system')
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [uiVisible, setUiVisible] = useState(false)
-  const [isFormattingOpen, setIsFormattingOpen] = useState(false)
+  const [isFormattingVisible, setIsFormattingVisible] = useState(() => {
+    if (typeof window === 'undefined') return true
+    const stored = window.localStorage.getItem('formattingVisible')
+    if (stored === null) return true
+    return stored === 'true'
+  })
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   const storageRef = useRef<Awaited<ReturnType<typeof getStorage>> | null>(null)
   const currentNoteRef = useRef<Note | null>(null)
   const editorRef = useRef<HTMLTextAreaElement>(null)
   const wordCountTimeout = useRef<number | null>(null)
+  const menuButtonRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   const currentNote = useMemo(
     () => notes.find((note) => note.id === currentNoteId) ?? null,
@@ -96,6 +104,34 @@ export const App = () => {
   useEffect(() => {
     applyTheme(themePreference)
   }, [applyTheme, themePreference])
+
+  useEffect(() => {
+    window.localStorage.setItem('formattingVisible', String(isFormattingVisible))
+  }, [isFormattingVisible])
+
+  useEffect(() => {
+    if (!isMenuOpen) return
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (menuRef.current?.contains(target) || menuButtonRef.current?.contains(target)) {
+        return
+      }
+      setIsMenuOpen(false)
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setIsMenuOpen(false)
+        menuButtonRef.current?.focus()
+      }
+    }
+    window.addEventListener('mousedown', handleClickOutside)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('mousedown', handleClickOutside)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isMenuOpen])
 
   useEffect(() => {
     let isMounted = true
@@ -481,85 +517,105 @@ export const App = () => {
     <ErrorBoundary>
       <div className="app">
         <SaveIndicator savedAt={savedAt} />
-        <div className="formatting-menu">
+        <div className="app-menu" ref={menuRef}>
           <button
             type="button"
-            className="formatting-toggle"
-            aria-label="Toggle formatting panel"
-            aria-expanded={isFormattingOpen}
-            onClick={() => setIsFormattingOpen((value) => !value)}
+            className="menu-trigger"
+            aria-label="Menu"
+            aria-expanded={isMenuOpen}
+            aria-haspopup="true"
+            ref={menuButtonRef}
+            onClick={() => setIsMenuOpen((value) => !value)}
           >
-            <span aria-hidden="true">☰</span>
-            <span>Toggle formatting</span>
+            <span aria-hidden="true">⋯</span>
           </button>
+          {isMenuOpen ? (
+            <div className="menu-dropdown" role="menu">
+              <button
+                type="button"
+                className="menu-item"
+                role="menuitem"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  setIsFormattingVisible((value) => !value)
+                  setIsMenuOpen(false)
+                  menuButtonRef.current?.focus()
+                }}
+              >
+                Toggle formatting
+              </button>
+            </div>
+          ) : null}
         </div>
-        <div className={`formatting-panel${isFormattingOpen ? ' is-open' : ''}`}>
-          <button
-            type="button"
-            className="formatting-item is-bold"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => applyWrapFormatting('**')}
-          >
-            B
-          </button>
-          <button
-            type="button"
-            className="formatting-item"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => applyWrapFormatting('*')}
-          >
-            I
-          </button>
-          <button
-            type="button"
-            className="formatting-item is-strike"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => applyWrapFormatting('~~')}
-          >
-            S
-          </button>
-          <button
-            type="button"
-            className="formatting-item is-underline"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => applyWrapFormatting('<u>', '</u>', 'underline')}
-          >
-            U
-          </button>
-          <button
-            type="button"
-            className="formatting-item"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={applyLinkFormatting}
-          >
-            Link
-          </button>
-          <span className="formatting-divider" aria-hidden="true" />
-          <button
-            type="button"
-            className="formatting-item"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => applyLinePrefix('# ')}
-          >
-            H1
-          </button>
-          <button
-            type="button"
-            className="formatting-item"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => applyLinePrefix('- ')}
-          >
-            List
-          </button>
-          <button
-            type="button"
-            className="formatting-item"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => applyLinePrefix('1. ')}
-          >
-            1.
-          </button>
-        </div>
+        {isFormattingVisible ? (
+          <div className="formatting-panel">
+            <button
+              type="button"
+              className="formatting-item is-bold"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => applyWrapFormatting('**')}
+            >
+              B
+            </button>
+            <button
+              type="button"
+              className="formatting-item"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => applyWrapFormatting('*')}
+            >
+              I
+            </button>
+            <button
+              type="button"
+              className="formatting-item is-strike"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => applyWrapFormatting('~~')}
+            >
+              S
+            </button>
+            <button
+              type="button"
+              className="formatting-item is-underline"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => applyWrapFormatting('<u>', '</u>', 'underline')}
+            >
+              U
+            </button>
+            <button
+              type="button"
+              className="formatting-item"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={applyLinkFormatting}
+            >
+              Link
+            </button>
+            <span className="formatting-divider" aria-hidden="true" />
+            <button
+              type="button"
+              className="formatting-item"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => applyLinePrefix('# ')}
+            >
+              H1
+            </button>
+            <button
+              type="button"
+              className="formatting-item"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => applyLinePrefix('- ')}
+            >
+              List
+            </button>
+            <button
+              type="button"
+              className="formatting-item"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => applyLinePrefix('1. ')}
+            >
+              1.
+            </button>
+          </div>
+        ) : null}
         <main className="editor-shell">
           <textarea
             ref={editorRef}
