@@ -68,6 +68,7 @@ export const App = () => {
   const [themePreference, setThemePreference] = useState<ThemePreference>('system')
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [uiVisible, setUiVisible] = useState(false)
+  const [isFormattingOpen, setIsFormattingOpen] = useState(false)
 
   const storageRef = useRef<Awaited<ReturnType<typeof getStorage>> | null>(null)
   const currentNoteRef = useRef<Note | null>(null)
@@ -426,6 +427,28 @@ export const App = () => {
     <ErrorBoundary>
       <div className="app">
         <SaveIndicator savedAt={savedAt} />
+        <div className="formatting-menu">
+          <button
+            type="button"
+            className="formatting-toggle"
+            aria-label="Toggle formatting panel"
+            aria-expanded={isFormattingOpen}
+            onClick={() => setIsFormattingOpen((value) => !value)}
+          >
+            ☰
+          </button>
+        </div>
+        <div className={`formatting-panel${isFormattingOpen ? ' is-open' : ''}`}>
+          <span className="formatting-item is-bold">B</span>
+          <span className="formatting-item">/</span>
+          <span className="formatting-item is-strike">S</span>
+          <span className="formatting-item is-underline">U</span>
+          <span className="formatting-item">Link</span>
+          <span className="formatting-divider" aria-hidden="true" />
+          <span className="formatting-item">H1</span>
+          <span className="formatting-item">List</span>
+          <span className="formatting-item">1.</span>
+        </div>
         <main className="editor-shell">
           <textarea
             ref={editorRef}
