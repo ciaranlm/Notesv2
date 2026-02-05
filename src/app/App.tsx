@@ -173,27 +173,6 @@ export const App = () => {
     notesRef.current = notes
   }, [notes])
 
-  useEffect(() => {
-    if (!currentNote) return
-    const draft = loadDraft(currentNote.id)
-    if (!draft) return
-    const isNewer = draft.updatedAt > currentNote.updatedAt
-    const hasDifferentContent = draft.content !== currentNote.content
-    if (!isNewer && !hasDifferentContent) return
-    const updatedNote: Note = {
-      ...currentNote,
-      content: draft.content,
-      updatedAt: Math.max(draft.updatedAt, currentNote.updatedAt),
-      stats: {
-        wordCount: getWordCountFromContent(draft.content),
-        editCount: currentNote.stats?.editCount ?? 0,
-        lastEditedAt: draft.updatedAt,
-      },
-    }
-    setNotes((prev) => prev.map((note) => (note.id === updatedNote.id ? updatedNote : note)))
-    void persistNote(updatedNote)
-  }, [currentNote, persistNote])
-
   const applyTheme = useCallback((theme: ThemePreference) => {
     const root = document.documentElement
     if (theme === 'system') {
