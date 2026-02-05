@@ -78,6 +78,38 @@ const mergeNotes = (existing: Note[], imported: Note[]) => {
   return Array.from(map.values()).sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
+type NoteDraft = { content: string; updatedAt: number }
+
+const getDraftKey = (noteId: string) => `notes_draft_${noteId}`
+
+const loadDraft = (noteId: string): NoteDraft | null => {
+  try {
+    const raw = window.localStorage.getItem(getDraftKey(noteId))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as NoteDraft
+    if (typeof parsed?.content !== 'string' || typeof parsed?.updatedAt !== 'number') return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+const saveDraft = (noteId: string, draft: NoteDraft) => {
+  try {
+    window.localStorage.setItem(getDraftKey(noteId), JSON.stringify(draft))
+  } catch {
+    // ignore draft persistence failures
+  }
+}
+
+const clearDraft = (noteId: string) => {
+  try {
+    window.localStorage.removeItem(getDraftKey(noteId))
+  } catch {
+    // ignore draft cleanup failures
+  }
+}
+
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
   constructor(props: { children: React.ReactNode }) {
     super(props)
@@ -140,6 +172,27 @@ export const App = () => {
   useEffect(() => {
     notesRef.current = notes
   }, [notes])
+
+  useEffect(() => {
+    if (!currentNote) return
+    const draft = loadDraft(currentNote.id)
+    if (!draft) return
+    const isNewer = draft.updatedAt > currentNote.updatedAt
+    const hasDifferentContent = draft.content !== currentNote.content
+    if (!isNewer && !hasDifferentContent) return
+    const updatedNote: Note = {
+      ...currentNote,
+      content: draft.content,
+      updatedAt: Math.max(draft.updatedAt, currentNote.updatedAt),
+      stats: {
+        wordCount: getWordCountFromContent(draft.content),
+        editCount: currentNote.stats?.editCount ?? 0,
+        lastEditedAt: draft.updatedAt,
+      },
+    }
+    setNotes((prev) => prev.map((note) => (note.id === updatedNote.id ? updatedNote : note)))
+    void persistNote(updatedNote)
+  }, [currentNote, persistNote])
 
   const applyTheme = useCallback((theme: ThemePreference) => {
     const root = document.documentElement
@@ -297,19 +350,21 @@ export const App = () => {
   const handleContentChange = (value: string) => {
     assert(currentNote, 'No active note')
     const normalizedContent = normalizeContent(value)
+    const updatedAt = now()
     const updatedNote = {
       ...currentNote,
       content: normalizedContent,
-      updatedAt: now(),
+      updatedAt,
       stats: {
         wordCount: getWordCountFromContent(normalizedContent),
         editCount: (currentNote.stats?.editCount ?? 0) + 1,
-        lastEditedAt: now(),
+        lastEditedAt: updatedAt,
       },
     }
     setNotes((prev) =>
       prev.map((note) => (note.id === updatedNote.id ? updatedNote : note)),
     )
+    saveDraft(updatedNote.id, { content: normalizedContent, updatedAt })
     scheduleSave(updatedNote)
   }
 
@@ -423,6 +478,7 @@ export const App = () => {
     if (storage) {
       await storage.deleteNote(id)
     }
+    clearDraft(id)
   }
 
   const handleManualSave = () => {
@@ -661,7 +717,9 @@ export const App = () => {
   useEffect(() => {
     const editor = editorRef.current
     if (!editor) return
-    const nextContent = currentNote?.content ?? ''
+    const draft = currentNote ? loadDraft(currentNote.id) : null
+    const hasDraft = draft && draft.updatedAt >= (currentNote?.updatedAt ?? 0)
+    const nextContent = hasDraft ? draft!.content : currentNote?.content ?? ''
     if (editor.innerHTML !== nextContent) {
       editor.innerHTML = nextContent
     }
