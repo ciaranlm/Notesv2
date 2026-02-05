@@ -301,7 +301,7 @@ export const App = () => {
     }
   }, [])
 
-  const { debounced: scheduleSave, flush: flushSave } = useDebouncedCallback((note: Note) => {
+  const { debounced: scheduleSave, cancel: cancelSave } = useDebouncedCallback((note: Note) => {
     void persistNote(note)
   }, 400)
 
@@ -326,7 +326,7 @@ export const App = () => {
     void persistNote(updatedNote)
   }, [currentNote, persistNote])
 
-  const syncEditorContent = useCallback(() => {
+  const syncEditorContent = useCallback(async () => {
     const editor = editorRef.current
     const activeNote = currentNoteRef.current
     if (!editor || !activeNote) return
@@ -344,8 +344,17 @@ export const App = () => {
       },
     }
     setNotes((prev) => prev.map((note) => (note.id === updatedNote.id ? updatedNote : note)))
-    void persistNote(updatedNote)
-  }, [persistNote])
+    saveDraft(updatedNote.id, { content: normalizedContent, updatedAt: timestamp })
+    cancelSave()
+    await persistNote(updatedNote)
+  }, [cancelSave, persistNote])
+
+  const handleOpenCalendar = useCallback(async () => {
+    await syncEditorContent()
+    setView('calendar')
+    setIsMenuOpen(false)
+    menuButtonRef.current?.focus()
+  }, [syncEditorContent])
 
   const handleContentChange = (value: string) => {
     assert(currentNote, 'No active note')
@@ -804,10 +813,7 @@ export const App = () => {
                 role="menuitem"
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => {
-                  syncEditorContent()
-                  setView('calendar')
-                  setIsMenuOpen(false)
-                  menuButtonRef.current?.focus()
+                  void handleOpenCalendar()
                 }}
               >
                 Calendar
