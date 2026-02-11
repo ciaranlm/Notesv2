@@ -6,6 +6,8 @@ type CalendarDrawerProps = {
   isOpen: boolean
   selectedDate: string
   hasContentMap: Record<string, boolean>
+  canInstallApp: boolean
+  onInstallApp: () => void
   onClose: () => void
   onSelectDate: (dateKey: string) => void
 }
@@ -38,7 +40,15 @@ const getFocusableElements = (container: HTMLElement) =>
     ),
   ).filter((node) => !node.hasAttribute('disabled') && !node.getAttribute('aria-hidden'))
 
-export const CalendarDrawer = ({ isOpen, selectedDate, hasContentMap, onClose, onSelectDate }: CalendarDrawerProps) => {
+export const CalendarDrawer = ({
+  isOpen,
+  selectedDate,
+  hasContentMap,
+  canInstallApp,
+  onInstallApp,
+  onClose,
+  onSelectDate,
+}: CalendarDrawerProps) => {
   const panelRef = useRef<HTMLElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const [visibleMonth, setVisibleMonth] = useState(() => parseDateKey(selectedDate))
@@ -114,6 +124,11 @@ export const CalendarDrawer = ({ isOpen, selectedDate, hasContentMap, onClose, o
             Close
           </button>
         </header>
+        {canInstallApp ? (
+          <button type="button" className="calendar-install-button" onClick={onInstallApp}>
+            Install app
+          </button>
+        ) : null}
 
         <div className="calendar-month-toolbar">
           <button type="button" className="calendar-nav-button" onClick={previousMonth} aria-label="Previous month">

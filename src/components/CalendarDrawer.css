@@ -55,7 +55,8 @@
 }
 
 .calendar-drawer-close,
-.calendar-nav-button {
+.calendar-nav-button,
+.calendar-install-button {
   border: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
   background: color-mix(in srgb, var(--panel) 78%, transparent);
   color: var(--text);
@@ -63,6 +64,13 @@
   padding: 8px 10px;
   font-size: 13px;
   cursor: pointer;
+}
+
+
+.calendar-install-button {
+  width: 100%;
+  margin-bottom: 12px;
+  text-align: left;
 }
 
 .calendar-month-toolbar {
