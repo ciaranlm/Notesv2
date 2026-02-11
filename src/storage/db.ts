@@ -69,6 +69,9 @@ const extractDateKey = (note: Note) => {
   if (note.id.startsWith('daily:')) {
     return note.id.replace('daily:', '')
   }
+  if (note.id.startsWith('note:')) {
+    return note.id.replace('note:', '')
+  }
   return undefined
 }
 
@@ -112,7 +115,7 @@ const createIndexedDbDriver = async (): Promise<StorageDriver> => {
     async listDailyNotesInRange(startDateKey, endDateKey) {
       const notes = await runTransaction<Note[]>(db, NOTES_STORE, 'readonly', (store) => store.getAll())
       return notes
-        .filter((note) => (note.type === 'daily' || note.id.startsWith('daily:')) && extractDateKey(note))
+        .filter((note) => (note.type === 'daily' || note.id.startsWith('daily:') || note.id.startsWith('note:')) && extractDateKey(note))
         .map((note) => ({
           dateKey: extractDateKey(note)!,
           wordCount: getDailyWordCount(note),
@@ -204,7 +207,7 @@ const createLocalStorageDriver = (): StorageDriver => ({
   },
   async listDailyNotesInRange(startDateKey, endDateKey) {
     return getLocalNotes()
-      .filter((note) => (note.type === 'daily' || note.id.startsWith('daily:')) && extractDateKey(note))
+      .filter((note) => (note.type === 'daily' || note.id.startsWith('daily:') || note.id.startsWith('note:')) && extractDateKey(note))
       .map((note) => ({
         dateKey: extractDateKey(note)!,
         wordCount: getDailyWordCount(note),
@@ -263,7 +266,7 @@ const createMemoryDriver = (): StorageDriver => {
     },
     async listDailyNotesInRange(startDateKey, endDateKey) {
       return notes
-        .filter((note) => (note.type === 'daily' || note.id.startsWith('daily:')) && extractDateKey(note))
+        .filter((note) => (note.type === 'daily' || note.id.startsWith('daily:') || note.id.startsWith('note:')) && extractDateKey(note))
         .map((note) => ({
           dateKey: extractDateKey(note)!,
           wordCount: getDailyWordCount(note),
