@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CalendarView } from '../components/CalendarView'
+import { CalendarDrawer } from '../components/CalendarDrawer'
 import { CommandPalette } from '../components/CommandPalette'
 import { SaveIndicator } from '../components/SaveIndicator'
 import { useDebouncedCallback } from '../hooks/useDebouncedCallback'
@@ -7,7 +7,7 @@ import { useHotkeys } from '../hooks/useHotkeys'
 import { getStorage, sanitizeTheme } from '../storage/db'
 import type { Note, NoteType, ThemePreference } from '../storage/types'
 import { getPlainTextFromContent, getWordCountFromContent } from '../utils/content'
-import { formatFullDate, getCalendarRange, getDailyNoteId, getTodayKey, parseDateKey } from '../utils/dates'
+import { formatFullDate, getDailyNoteId, getTodayKey, parseDateKey } from '../utils/dates'
 import { createId } from '../utils/id'
 import { now } from '../utils/time'
 import { assert } from '../utils/assertions'
@@ -45,13 +45,15 @@ const normalizeContent = (content: string) => {
 }
 
 const normalizeNoteType = (note: Note): NoteType =>
-  note.type ?? (note.id.startsWith('daily:') || note.dateKey ? 'daily' : 'note')
+  note.type ?? (note.id.startsWith('daily:') || note.id.startsWith('note:') || note.dateKey ? 'daily' : 'note')
 
 const normalizeNote = (note: Note): Note => {
   const type = normalizeNoteType(note)
   const dateKey =
-    note.dateKey ?? (type === 'daily' && note.id.startsWith('daily:') ? note.id.replace('daily:', '') : undefined)
-  return { ...note, type, dateKey }
+    note.dateKey ??
+    (type === 'daily' && note.id.includes(':') ? note.id.slice(note.id.indexOf(':') + 1) : undefined)
+  const id = type === 'daily' && dateKey ? getDailyNoteId(dateKey) : note.id
+  return { ...note, id, type, dateKey }
 }
 
 const getDailyTitle = (dateKey: string) => formatFullDate(parseDateKey(dateKey))
@@ -138,7 +140,7 @@ export const App = () => {
   const [currentNoteId, setCurrentNoteId] = useState<string | null>(null)
   const [currentMode, setCurrentMode] = useState<'daily' | 'note'>('daily')
   const [currentDateKey, setCurrentDateKey] = useState(() => getTodayKey())
-  const [view, setView] = useState<'editor' | 'calendar'>('editor')
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false)
   const [isPaletteOpen, setIsPaletteOpen] = useState(false)
   const [paletteInitialMode, setPaletteInitialMode] = useState<'default' | 'confirm-delete'>('default')
   const [themePreference, setThemePreference] = useState<ThemePreference>('system')
@@ -150,15 +152,12 @@ export const App = () => {
     if (stored === null) return true
     return stored === 'true'
   })
-  const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   const storageRef = useRef<Awaited<ReturnType<typeof getStorage>> | null>(null)
   const currentNoteRef = useRef<Note | null>(null)
   const notesRef = useRef<Note[]>([])
   const editorRef = useRef<HTMLDivElement>(null)
   const wordCountTimeout = useRef<number | null>(null)
-  const menuButtonRef = useRef<HTMLButtonElement>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
 
   const currentNote = useMemo(
     () => notes.find((note) => note.id === currentNoteId) ?? null,
@@ -189,30 +188,6 @@ export const App = () => {
   useEffect(() => {
     window.localStorage.setItem('formattingVisible', String(isFormattingVisible))
   }, [isFormattingVisible])
-
-  useEffect(() => {
-    if (!isMenuOpen) return
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Node
-      if (menuRef.current?.contains(target) || menuButtonRef.current?.contains(target)) {
-        return
-      }
-      setIsMenuOpen(false)
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        setIsMenuOpen(false)
-        menuButtonRef.current?.focus()
-      }
-    }
-    window.addEventListener('mousedown', handleClickOutside)
-    window.addEventListener('keydown', handleKeyDown)
-    return () => {
-      window.removeEventListener('mousedown', handleClickOutside)
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [isMenuOpen])
 
   useEffect(() => {
     let isMounted = true
@@ -349,12 +324,22 @@ export const App = () => {
     await persistNote(updatedNote)
   }, [cancelSave, persistNote])
 
+  const handleToggleCalendar = useCallback(async () => {
+    if (!isCalendarOpen) {
+      await syncEditorContent()
+    }
+    setIsCalendarOpen((value) => !value)
+  }, [isCalendarOpen, syncEditorContent])
+
   const handleOpenCalendar = useCallback(async () => {
     await syncEditorContent()
-    setView('calendar')
-    setIsMenuOpen(false)
-    menuButtonRef.current?.focus()
+    setIsCalendarOpen(true)
   }, [syncEditorContent])
+
+  const handleCloseCalendar = useCallback(() => {
+    setIsCalendarOpen(false)
+    editorRef.current?.focus()
+  }, [])
 
   const handleContentChange = (value: string) => {
     assert(currentNote, 'No active note')
@@ -424,7 +409,6 @@ export const App = () => {
   const handleSelectNote = async (id: string) => {
     setCurrentMode('note')
     setCurrentNoteId(id)
-    setView('editor')
     const storage = storageRef.current
     if (storage) {
       await storage.setMeta('lastOpenNoteId', id)
@@ -438,7 +422,6 @@ export const App = () => {
     setNotes((prev) => [newNote, ...prev])
     setCurrentNoteId(newNote.id)
     setCurrentMode('note')
-    setView('editor')
     if (storage) {
       await storage.saveNote(newNote)
       await storage.setMeta('lastOpenNoteId', newNote.id)
@@ -545,11 +528,9 @@ export const App = () => {
       setCurrentMode('daily')
       setCurrentDateKey(todayKey)
       setCurrentNoteId(dailyNote.id)
-      setView('editor')
     } else if (normalized[0]) {
       setCurrentMode('note')
       setCurrentNoteId(normalized[0].id)
-      setView('editor')
     }
     const storage = storageRef.current
     if (storage) {
@@ -576,24 +557,6 @@ export const App = () => {
   }
 
   useHotkeys([
-    {
-      combo: 'cmd+k',
-      handler: (event) => {
-        event.preventDefault()
-        setPaletteInitialMode('default')
-        setIsPaletteOpen(true)
-      },
-      allowInInput: true,
-    },
-    {
-      combo: 'ctrl+k',
-      handler: (event) => {
-        event.preventDefault()
-        setPaletteInitialMode('default')
-        setIsPaletteOpen(true)
-      },
-      allowInInput: true,
-    },
     {
       combo: 'cmd+p',
       handler: (event) => {
@@ -686,18 +649,38 @@ export const App = () => {
   }, [flushSave])
 
   useEffect(() => {
-    if (view !== 'calendar') return
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+    const isEditableTarget = (target: EventTarget | null) => {
+      const element = target as HTMLElement | null
+      if (!element) return false
+      const tag = element.tagName.toLowerCase()
+      return tag === 'input' || tag === 'textarea' || element.isContentEditable
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && isCalendarOpen) {
         event.preventDefault()
-        setView('editor')
+        handleCloseCalendar()
+        return
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        void handleToggleCalendar()
+        return
+      }
+
+      if (event.key.toLowerCase() === 'c' && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+        if (isEditableTarget(event.target)) return
+        event.preventDefault()
+        void handleToggleCalendar()
       }
     }
-    window.addEventListener('keydown', handleEscape)
+
+    window.addEventListener('keydown', handleKeyDown)
     return () => {
-      window.removeEventListener('keydown', handleEscape)
+      window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [view])
+  }, [handleCloseCalendar, handleToggleCalendar, isCalendarOpen])
 
   useEffect(() => {
     const showUi = () => {
@@ -723,6 +706,17 @@ export const App = () => {
     return getWordCountFromContent(currentNote.content)
   }, [currentNote])
 
+  const selectedDate = currentMode === 'daily' && currentDateKey ? currentDateKey : getTodayKey()
+
+  const hasContentMap = useMemo(() => {
+    const map: Record<string, boolean> = {}
+    notes.forEach((note) => {
+      if (note.type !== 'daily' || !note.dateKey) return
+      map[note.dateKey] = getPlainTextFromContent(note.content).trim().length > 0
+    })
+    return map
+  }, [notes])
+
   useEffect(() => {
     const editor = editorRef.current
     if (!editor) return
@@ -734,37 +728,7 @@ export const App = () => {
     }
   }, [currentNote])
 
-  const { startKey, endKey } = useMemo(() => getCalendarRange(), [])
-  const [activityMap, setActivityMap] = useState<Record<string, { wordCount: number; intensity: number }>>({})
-
-  useEffect(() => {
-    if (view !== 'calendar') return
-    const storage = storageRef.current
-    if (!storage) return
-    let active = true
-    const loadActivity = async () => {
-      const summaries = await storage.listDailyNotesInRange(startKey, endKey)
-      if (!active) return
-      const map: Record<string, { wordCount: number; intensity: number }> = {}
-      summaries.forEach((summary) => {
-        const wordCount = summary.wordCount
-        let intensity = 0
-        if (wordCount >= 1 && wordCount <= 50) intensity = 1
-        else if (wordCount <= 150) intensity = 2
-        else if (wordCount <= 400) intensity = 3
-        else if (wordCount > 400) intensity = 4
-        map[summary.dateKey] = { wordCount, intensity }
-      })
-      setActivityMap(map)
-    }
-    void loadActivity()
-    return () => {
-      active = false
-    }
-  }, [view, startKey, endKey, notes])
-
   const handleSelectDate = async (dateKey: string) => {
-    // Flush editor state before switching the active daily note to avoid dropping in-flight edits.
     await syncEditorContent()
     const storage = storageRef.current
     const dailyId = getDailyNoteId(dateKey)
@@ -783,75 +747,30 @@ export const App = () => {
       await storage.setMeta('lastOpenMode', 'daily')
       await storage.setMeta('lastOpenDateKey', dateKey)
     }
-    setView('editor')
-  }
-
-  const handleBackToToday = async () => {
-    const todayKey = getTodayKey()
-    await handleSelectDate(todayKey)
+    handleCloseCalendar()
   }
 
   return (
     <ErrorBoundary>
       <div className="app">
         <SaveIndicator savedAt={savedAt} />
-        <div className="app-menu" ref={menuRef}>
+        <header className="top-bar">
+          <button type="button" className="top-bar-button" aria-label="Open calendar" onClick={() => void handleOpenCalendar()}>
+            ☰
+          </button>
+          <button type="button" className="top-bar-date" onClick={() => void handleOpenCalendar()}>
+            {formatFullDate(parseDateKey(selectedDate))}
+          </button>
           <button
             type="button"
-            className="menu-trigger"
-            aria-label="Menu"
-            aria-expanded={isMenuOpen}
-            aria-haspopup="true"
-            ref={menuButtonRef}
-            onClick={() => setIsMenuOpen((value) => !value)}
+            className="top-bar-button"
+            aria-label="Toggle formatting controls"
+            onClick={() => setIsFormattingVisible((value) => !value)}
           >
-            <span aria-hidden="true">⋯</span>
+            Aa
           </button>
-          {isMenuOpen ? (
-            <div className="menu-dropdown" role="menu">
-              <button
-                type="button"
-                className="menu-item"
-                role="menuitem"
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => {
-                  void handleOpenCalendar()
-                }}
-              >
-                Calendar
-              </button>
-              {view === 'calendar' ? (
-                <button
-                  type="button"
-                  className="menu-item"
-                  role="menuitem"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => {
-                    void handleBackToToday()
-                    setIsMenuOpen(false)
-                    menuButtonRef.current?.focus()
-                  }}
-                >
-                  Back to today
-                </button>
-              ) : null}
-              <button
-                type="button"
-                className="menu-item"
-                role="menuitem"
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => {
-                  setIsFormattingVisible((value) => !value)
-                  setIsMenuOpen(false)
-                  menuButtonRef.current?.focus()
-                }}
-              >
-                Toggle formatting
-              </button>
-            </div>
-          ) : null}
-        </div>
-        {isFormattingVisible && view === 'editor' ? (
+        </header>
+        {isFormattingVisible ? (
           <div className="formatting-panel">
             <button
               type="button"
@@ -920,33 +839,29 @@ export const App = () => {
             </button>
           </div>
         ) : null}
-        {view === 'editor' ? (
-          <>
-            <main className="editor-shell">
-              <div
-                ref={editorRef}
-                className="editor"
-                contentEditable
-                role="textbox"
-                aria-multiline="true"
-                suppressContentEditableWarning
-                onInput={(event) => handleContentChange((event.target as HTMLDivElement).innerHTML)}
-                onFocus={() => setUiVisible(true)}
-              />
-            </main>
-            {uiVisible && !isPaletteOpen && (
-              <div className="word-count">{wordCount} words</div>
-            )}
-          </>
-        ) : (
-          <CalendarView
-            activityMap={activityMap}
-            selectedDateKey={currentMode === 'daily' ? currentDateKey : null}
-            onSelectDate={handleSelectDate}
-            onClose={() => setView('editor')}
-            onBackToToday={handleBackToToday}
+        <main className="editor-shell">
+          <div
+            ref={editorRef}
+            className="editor"
+            contentEditable
+            role="textbox"
+            aria-multiline="true"
+            suppressContentEditableWarning
+            onInput={(event) => handleContentChange((event.target as HTMLDivElement).innerHTML)}
+            onFocus={() => setUiVisible(true)}
           />
-        )}
+        </main>
+        {uiVisible && !isPaletteOpen && <div className="word-count">{wordCount} words</div>}
+        <CalendarDrawer
+          isOpen={isCalendarOpen}
+          selectedDate={selectedDate}
+          hasContentMap={hasContentMap}
+          onSelectDate={(dateKey) => {
+            void handleSelectDate(dateKey)
+          }}
+          onClose={handleCloseCalendar}
+        />
+
         <CommandPalette
           isOpen={isPaletteOpen}
           initialMode={paletteInitialMode}

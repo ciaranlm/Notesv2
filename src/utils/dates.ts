@@ -48,4 +48,4 @@ export const formatFullDate = (date: Date) =>
 export const formatMonthLabel = (date: Date) =>
   date.toLocaleDateString(undefined, { month: 'short' })
 
-export const getDailyNoteId = (dateKey: string) => `daily:${dateKey}`
+export const getDailyNoteId = (dateKey: string) => `note:${dateKey}`
