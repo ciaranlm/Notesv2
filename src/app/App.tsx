@@ -301,7 +301,7 @@ export const App = () => {
     }
   }, [])
 
-  const { debounced: scheduleSave, cancel: cancelSave } = useDebouncedCallback((note: Note) => {
+  const { debounced: scheduleSave, flush: flushSave, cancel: cancelSave } = useDebouncedCallback((note: Note) => {
     void persistNote(note)
   }, 400)
 
@@ -764,6 +764,8 @@ export const App = () => {
   }, [view, startKey, endKey, notes])
 
   const handleSelectDate = async (dateKey: string) => {
+    // Flush editor state before switching the active daily note to avoid dropping in-flight edits.
+    await syncEditorContent()
     const storage = storageRef.current
     const dailyId = getDailyNoteId(dateKey)
     let existing = notesRef.current.find((note) => note.id === dailyId)
