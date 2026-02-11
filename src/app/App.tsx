@@ -112,6 +112,11 @@ const clearDraft = (noteId: string) => {
   }
 }
 
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
+}
+
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
   constructor(props: { children: React.ReactNode }) {
     super(props)
@@ -146,6 +151,10 @@ export const App = () => {
   const [themePreference, setThemePreference] = useState<ThemePreference>('system')
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [uiVisible, setUiVisible] = useState(false)
+  const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null)
+  const [isInstalled, setIsInstalled] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches,
+  )
   const [isFormattingVisible, setIsFormattingVisible] = useState(() => {
     if (typeof window === 'undefined') return true
     const stored = window.localStorage.getItem('formattingVisible')
@@ -188,6 +197,26 @@ export const App = () => {
   useEffect(() => {
     window.localStorage.setItem('formattingVisible', String(isFormattingVisible))
   }, [isFormattingVisible])
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault()
+      setInstallPromptEvent(event as BeforeInstallPromptEvent)
+    }
+
+    const handleAppInstalled = () => {
+      setInstallPromptEvent(null)
+      setIsInstalled(true)
+    }
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+    window.addEventListener('appinstalled', handleAppInstalled)
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+      window.removeEventListener('appinstalled', handleAppInstalled)
+    }
+  }, [])
 
   useEffect(() => {
     let isMounted = true
@@ -728,6 +757,18 @@ export const App = () => {
     }
   }, [currentNote])
 
+  const handleInstallApp = async () => {
+    if (!installPromptEvent) return
+    await installPromptEvent.prompt()
+    const choice = await installPromptEvent.userChoice
+    if (choice.outcome === 'accepted') {
+      setIsInstalled(true)
+    }
+    setInstallPromptEvent(null)
+  }
+
+  const canInstallApp = Boolean(installPromptEvent) && !isInstalled
+
   const handleSelectDate = async (dateKey: string) => {
     await syncEditorContent()
     const storage = storageRef.current
@@ -856,6 +897,10 @@ export const App = () => {
           isOpen={isCalendarOpen}
           selectedDate={selectedDate}
           hasContentMap={hasContentMap}
+          canInstallApp={canInstallApp}
+          onInstallApp={() => {
+            void handleInstallApp()
+          }}
           onSelectDate={(dateKey) => {
             void handleSelectDate(dateKey)
           }}

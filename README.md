@@ -11,6 +11,7 @@ A blank.page-inspired minimalist writing app. Open it and start typing on an ins
 - Search across titles and full note content.
 - Dark/light mode toggle with system default.
 - Offline-first after first load.
+- Installable as a Progressive Web App (PWA) in Chrome/Edge on Windows and macOS.
 
 ## Keyboard shortcuts
 | Action | Shortcut |
@@ -39,6 +40,21 @@ Blank Page Notes is local-only. No analytics, no network calls, and no accounts.
   - `lastOpenDateKey`: remember the last open daily page
   - `theme`: `system`, `light`, or `dark`
 - **Fallback**: If IndexedDB is unavailable, the app falls back to localStorage. If both fail, it keeps notes in memory for the session.
+
+
+## Install as an app (Windows/macOS)
+1. Open the deployed site in **Chrome** or **Microsoft Edge**.
+2. Open the calendar drawer (☰). If your browser supports installation, an **Install app** button appears.
+3. Click **Install app** and confirm.
+4. Launch it later from your OS app launcher (Start Menu on Windows, Applications/Launchpad on macOS).
+
+You can also install from the browser address bar when the install icon is shown.
+
+## PWA + Cloudflare Pages notes
+- `manifest.webmanifest` is served from `public/` at the site root.
+- Add your own app icons under `public/icons/` and then update `manifest.webmanifest` `icons` entries (192x192, 512x512, and maskable variants if desired).
+- `sw.js` is served from the site root and registered on page load.
+- On deploy updates, the service worker uses cache versioning (e.g. `app-shell-v1`, `runtime-v1`) so old caches can be cleaned during activation.
 
 ## Development
 ```bash
