@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
-import type { Note, ThemePreference } from '../storage/types'
+import type { Note } from '../storage/types'
 import { getPlainTextFromContent } from '../utils/content'
 import './CommandPalette.css'
 
-export type CommandPaletteMode = 'default' | 'rename' | 'confirm-delete' | 'import-choice' | 'replace-confirm'
+export type CommandPaletteMode = 'default' | 'confirm-delete' | 'import-choice' | 'replace-confirm'
 
 export type CommandPaletteProps = {
   isOpen: boolean
@@ -13,15 +13,11 @@ export type CommandPaletteProps = {
   initialMode?: CommandPaletteMode
   onClose: () => void
   onSelectNote: (id: string) => void
-  onNewNote: () => void
-  onRenameNote: (id: string, title: string | undefined) => void
   onDeleteNote: (id: string) => void
   onExportCurrent: () => void
   onExportAll: () => void
   onImportMerge: (notes: Note[]) => void
   onImportReplace: (notes: Note[]) => void
-  onToggleTheme: () => void
-  themePreference: ThemePreference
   getTitle: (note: Note) => string
 }
 
@@ -123,21 +119,16 @@ export const CommandPalette = ({
   initialMode = 'default',
   onClose,
   onSelectNote,
-  onNewNote,
-  onRenameNote,
   onDeleteNote,
   onExportCurrent,
   onExportAll,
   onImportMerge,
   onImportReplace,
-  onToggleTheme,
-  themePreference,
   getTitle,
 }: CommandPaletteProps) => {
   const [query, setQuery] = useState('')
   const [mode, setMode] = useState<Mode>('default')
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const [renameValue, setRenameValue] = useState('')
   const [confirmValue, setConfirmValue] = useState('')
   const [importNotes, setImportNotes] = useState<Note[] | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
@@ -149,7 +140,6 @@ export const CommandPalette = ({
       setQuery('')
       setMode(initialMode)
       setSelectedIndex(0)
-      setRenameValue('')
       setConfirmValue('')
       setImportNotes(null)
       setImportError(null)
@@ -211,13 +201,6 @@ export const CommandPalette = ({
     const actions: ListItem[] = normalizedQuery
       ? []
       : [
-          { type: 'action', id: 'new', label: 'New note', hint: 'Cmd/Ctrl+N', action: onNewNote },
-          {
-            type: 'action',
-            id: 'rename',
-            label: 'Rename current note',
-            action: () => setMode('rename'),
-          },
           {
             type: 'action',
             id: 'delete',
@@ -233,12 +216,6 @@ export const CommandPalette = ({
             label: 'Import notes (.json)',
             action: () => fileInputRef.current?.click(),
           },
-          {
-            type: 'action',
-            id: 'theme',
-            label: `Theme: ${themePreference}`,
-            action: onToggleTheme,
-          },
         ]
 
     const noteItems: ListItem[] = rankedNotes.map((result) => ({
@@ -250,7 +227,7 @@ export const CommandPalette = ({
     }))
 
     return [...actions, ...noteItems]
-  }, [normalizedQuery, onNewNote, onExportAll, onExportCurrent, onToggleTheme, themePreference, rankedNotes])
+  }, [normalizedQuery, onExportAll, onExportCurrent, rankedNotes])
 
   useEffect(() => {
     setSelectedIndex(0)
@@ -263,9 +240,7 @@ export const CommandPalette = ({
   const handleSelect = (item: ListItem) => {
     if (item.type === 'action') {
       item.action()
-      if (item.id === 'new') {
-        onClose()
-      }
+      onClose()
       return
     }
     onSelectNote(item.id)
@@ -293,20 +268,12 @@ export const CommandPalette = ({
       if (mode !== 'default') {
         setMode('default')
         setConfirmValue('')
-        setRenameValue('')
         setImportNotes(null)
         setImportError(null)
         return
       }
       onClose()
     }
-  }
-
-  const handleRenameSubmit = () => {
-    if (!activeNote) return
-    const value = renameValue.trim()
-    onRenameNote(activeNote.id, value.length ? value : undefined)
-    onClose()
   }
 
   const handleDeleteSubmit = () => {
@@ -354,7 +321,7 @@ export const CommandPalette = ({
     onClose()
   }
 
-  const emptyMessage = normalizedQuery ? 'No matching notes. Try a different keyword.' : 'No notes yet. Create one to get started.'
+  const emptyMessage = normalizedQuery ? 'No matching notes. Try a different keyword.' : 'No notes yet.'
 
   return (
     <div className="palette-overlay" onClick={onClose}>
@@ -367,25 +334,6 @@ export const CommandPalette = ({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={handleKeyDown}
-          />
-        )}
-        {mode === 'rename' && (
-          <input
-            ref={inputRef}
-            className="palette-input"
-            placeholder="Rename note"
-            value={renameValue}
-            onChange={(event) => setRenameValue(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                handleRenameSubmit()
-              }
-              if (event.key === 'Escape') {
-                event.preventDefault()
-                setMode('default')
-              }
-            }}
           />
         )}
         {mode === 'confirm-delete' && (

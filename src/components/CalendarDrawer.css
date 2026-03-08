@@ -152,3 +152,15 @@
     transform: translateY(0);
   }
 }
+
+.calendar-theme-toggle {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-transform: capitalize;
+}

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { addDays, formatDateKey, formatFullDate, getTodayKey, parseDateKey, startOfWeek } from '../utils/dates'
+import type { ThemePreference } from '../storage/types'
 import './CalendarDrawer.css'
 
 type CalendarDrawerProps = {
@@ -10,6 +11,8 @@ type CalendarDrawerProps = {
   onInstallApp: () => void
   onClose: () => void
   onSelectDate: (dateKey: string) => void
+  themePreference: ThemePreference
+  onToggleTheme: () => void
 }
 
 type CalendarCell = {
@@ -48,6 +51,8 @@ export const CalendarDrawer = ({
   onInstallApp,
   onClose,
   onSelectDate,
+  themePreference,
+  onToggleTheme,
 }: CalendarDrawerProps) => {
   const panelRef = useRef<HTMLElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
@@ -174,6 +179,12 @@ export const CalendarDrawer = ({
               </button>
             )
           })}
+        </div>
+        <div className="calendar-theme-toggle">
+          <span>Theme</span>
+          <button type="button" className="calendar-nav-button" onClick={onToggleTheme}>
+            {themePreference}
+          </button>
         </div>
       </section>
     </div>
