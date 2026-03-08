@@ -164,3 +164,23 @@
   color: var(--text-muted);
   text-transform: capitalize;
 }
+
+.calendar-export-controls {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.calendar-export-buttons {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.calendar-export-buttons .calendar-nav-button {
+  text-align: left;
+}

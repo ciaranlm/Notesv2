@@ -147,7 +147,6 @@ export const App = () => {
   const [currentDateKey, setCurrentDateKey] = useState(() => getTodayKey())
   const [isCalendarOpen, setIsCalendarOpen] = useState(false)
   const [isPaletteOpen, setIsPaletteOpen] = useState(false)
-  const [paletteInitialMode, setPaletteInitialMode] = useState<'default' | 'confirm-delete'>('default')
   const [themePreference, setThemePreference] = useState<ThemePreference>('system')
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [uiVisible, setUiVisible] = useState(false)
@@ -299,6 +298,7 @@ export const App = () => {
     if (!storage) return
     try {
       await storage.saveNote(note)
+      clearDraft(note.id)
       setSavedAt(now())
     } catch (error) {
       console.warn('Failed to save note, keeping in memory.', error)
@@ -352,6 +352,13 @@ export const App = () => {
     cancelSave()
     await persistNote(updatedNote)
   }, [cancelSave, persistNote])
+
+  const handleManualSave = () => {
+    const activeNote = currentNoteRef.current
+    if (!activeNote) return
+    void syncEditorContent()
+    flushSave(activeNote)
+  }
 
   const handleToggleCalendar = useCallback(async () => {
     if (!isCalendarOpen) {
@@ -445,42 +452,6 @@ export const App = () => {
     }
   }
 
-  const handleDeleteNote = async (id: string) => {
-    const storage = storageRef.current
-    setNotes((prev) => {
-      const remaining = prev.filter((note) => note.id !== id)
-      if (remaining.length === 0) {
-        const newNote = createEmptyNote()
-        if (storage) {
-          void storage.saveNote(newNote)
-          void storage.setMeta('lastOpenNoteId', newNote.id)
-          void storage.setMeta('lastOpenMode', 'note')
-        }
-        setCurrentMode('note')
-        setCurrentNoteId(newNote.id)
-        return [newNote]
-      }
-      if (currentNoteId === id) {
-        setCurrentNoteId(remaining[0].id)
-        if (storage) {
-          void storage.setMeta('lastOpenNoteId', remaining[0].id)
-          void storage.setMeta('lastOpenMode', 'note')
-        }
-        setCurrentMode('note')
-      }
-      return remaining
-    })
-    if (storage) {
-      await storage.deleteNote(id)
-    }
-    clearDraft(id)
-  }
-
-  const handleManualSave = () => {
-    if (currentNoteRef.current) {
-      flushSave(currentNoteRef.current)
-    }
-  }
 
   const exportFile = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob)
@@ -564,7 +535,6 @@ export const App = () => {
       combo: 'cmd+k',
       handler: (event) => {
         event.preventDefault()
-        setPaletteInitialMode('default')
         setIsPaletteOpen(true)
       },
       allowInInput: true,
@@ -573,7 +543,6 @@ export const App = () => {
       combo: 'ctrl+k',
       handler: (event) => {
         event.preventDefault()
-        setPaletteInitialMode('default')
         setIsPaletteOpen(true)
       },
       allowInInput: true,
@@ -582,7 +551,6 @@ export const App = () => {
       combo: 'cmd+p',
       handler: (event) => {
         event.preventDefault()
-        setPaletteInitialMode('default')
         setIsPaletteOpen(true)
       },
       allowInInput: true,
@@ -591,7 +559,6 @@ export const App = () => {
       combo: 'ctrl+p',
       handler: (event) => {
         event.preventDefault()
-        setPaletteInitialMode('default')
         setIsPaletteOpen(true)
       },
       allowInInput: true,
@@ -609,24 +576,6 @@ export const App = () => {
       handler: (event) => {
         event.preventDefault()
         handleManualSave()
-      },
-      allowInInput: true,
-    },
-    {
-      combo: 'cmd+shift+backspace',
-      handler: (event) => {
-        event.preventDefault()
-        setPaletteInitialMode('confirm-delete')
-        setIsPaletteOpen(true)
-      },
-      allowInInput: true,
-    },
-    {
-      combo: 'ctrl+shift+backspace',
-      handler: (event) => {
-        event.preventDefault()
-        setPaletteInitialMode('confirm-delete')
-        setIsPaletteOpen(true)
       },
       allowInInput: true,
     },
@@ -884,22 +833,19 @@ export const App = () => {
           onToggleTheme={() => {
             void handleToggleTheme()
           }}
+          onExportCurrent={handleExportCurrent}
+          onExportAll={handleExportAll}
           onClose={handleCloseCalendar}
         />
 
         <CommandPalette
           isOpen={isPaletteOpen}
-          initialMode={paletteInitialMode}
           notes={notes}
           currentNoteId={currentNoteId}
           onClose={() => {
             setIsPaletteOpen(false)
-            setPaletteInitialMode('default')
           }}
           onSelectNote={handleSelectNote}
-          onDeleteNote={handleDeleteNote}
-          onExportCurrent={handleExportCurrent}
-          onExportAll={handleExportAll}
           onImportMerge={handleImportMerge}
           onImportReplace={handleImportReplace}
           getTitle={deriveTitle}
