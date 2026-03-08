@@ -445,32 +445,6 @@ export const App = () => {
     }
   }
 
-  const handleNewNote = async () => {
-    const storage = storageRef.current
-    const newNote = createEmptyNote()
-    setNotes((prev) => [newNote, ...prev])
-    setCurrentNoteId(newNote.id)
-    setCurrentMode('note')
-    if (storage) {
-      await storage.saveNote(newNote)
-      await storage.setMeta('lastOpenNoteId', newNote.id)
-      await storage.setMeta('lastOpenMode', 'note')
-    }
-  }
-
-  const handleRenameNote = async (id: string, titleOverride?: string) => {
-    setNotes((prev) => {
-      const updatedNotes = prev.map((note) =>
-        note.id === id ? { ...note, titleOverride, updatedAt: now() } : note,
-      )
-      const updatedNote = updatedNotes.find((note) => note.id === id)
-      if (updatedNote) {
-        void persistNote(updatedNote)
-      }
-      return updatedNotes
-    })
-  }
-
   const handleDeleteNote = async (id: string) => {
     const storage = storageRef.current
     setNotes((prev) => {
@@ -619,22 +593,6 @@ export const App = () => {
         event.preventDefault()
         setPaletteInitialMode('default')
         setIsPaletteOpen(true)
-      },
-      allowInInput: true,
-    },
-    {
-      combo: 'cmd+n',
-      handler: (event) => {
-        event.preventDefault()
-        void handleNewNote()
-      },
-      allowInInput: true,
-    },
-    {
-      combo: 'ctrl+n',
-      handler: (event) => {
-        event.preventDefault()
-        void handleNewNote()
       },
       allowInInput: true,
     },
@@ -916,6 +874,10 @@ export const App = () => {
           onSelectDate={(dateKey) => {
             void handleSelectDate(dateKey)
           }}
+          themePreference={themePreference}
+          onToggleTheme={() => {
+            void handleToggleTheme()
+          }}
           onClose={handleCloseCalendar}
         />
 
@@ -929,15 +891,11 @@ export const App = () => {
             setPaletteInitialMode('default')
           }}
           onSelectNote={handleSelectNote}
-          onNewNote={handleNewNote}
-          onRenameNote={handleRenameNote}
           onDeleteNote={handleDeleteNote}
           onExportCurrent={handleExportCurrent}
           onExportAll={handleExportAll}
           onImportMerge={handleImportMerge}
           onImportReplace={handleImportReplace}
-          onToggleTheme={handleToggleTheme}
-          themePreference={themePreference}
           getTitle={deriveTitle}
         />
       </div>
