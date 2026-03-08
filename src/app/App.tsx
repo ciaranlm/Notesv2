@@ -6,7 +6,7 @@ import { useDebouncedCallback } from '../hooks/useDebouncedCallback'
 import { useHotkeys } from '../hooks/useHotkeys'
 import { getStorage, sanitizeTheme } from '../storage/db'
 import type { Note, NoteType, ThemePreference } from '../storage/types'
-import { getPlainTextFromContent, getWordCountFromContent } from '../utils/content'
+import { getPlainTextFromContent, getWordCountFromContent, getWritingStatsFromContent } from '../utils/content'
 import { formatFullDate, getDailyNoteId, getTodayKey, parseDateKey } from '../utils/dates'
 import { createId } from '../utils/id'
 import { now } from '../utils/time'
@@ -700,9 +700,11 @@ export const App = () => {
     }
   }, [])
 
-  const wordCount = useMemo(() => {
-    if (!currentNote) return 0
-    return getWordCountFromContent(currentNote.content)
+  const writingStats = useMemo(() => {
+    if (!currentNote) {
+      return { wordCount: 0, readingTimeLabel: '<1 min read' }
+    }
+    return getWritingStatsFromContent(currentNote.content)
   }, [currentNote])
 
   const selectedDate = currentMode === 'daily' && currentDateKey ? currentDateKey : getTodayKey()
@@ -862,7 +864,11 @@ export const App = () => {
             onFocus={() => setUiVisible(true)}
           />
         </main>
-        {uiVisible && !isPaletteOpen && <div className="word-count">{wordCount} words</div>}
+        {uiVisible && !isPaletteOpen && (
+          <div className="writing-stats">
+            {writingStats.wordCount.toLocaleString()} words · {writingStats.readingTimeLabel}
+          </div>
+        )}
         <CalendarDrawer
           isOpen={isCalendarOpen}
           selectedDate={selectedDate}
