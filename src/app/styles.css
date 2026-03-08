@@ -72,6 +72,7 @@ body {
 .top-bar-date {
   justify-self: center;
   width: min(100%, 380px);
+  border-radius: 12px;
 }
 
 .formatting-panel {
