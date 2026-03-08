@@ -13,6 +13,8 @@ type CalendarDrawerProps = {
   onSelectDate: (dateKey: string) => void
   themePreference: ThemePreference
   onToggleTheme: () => void
+  onExportCurrent: () => void
+  onExportAll: () => void
 }
 
 type CalendarCell = {
@@ -53,6 +55,8 @@ export const CalendarDrawer = ({
   onSelectDate,
   themePreference,
   onToggleTheme,
+  onExportCurrent,
+  onExportAll,
 }: CalendarDrawerProps) => {
   const panelRef = useRef<HTMLElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
@@ -185,6 +189,17 @@ export const CalendarDrawer = ({
           <button type="button" className="calendar-nav-button" onClick={onToggleTheme}>
             {themePreference}
           </button>
+        </div>
+        <div className="calendar-export-controls">
+          <span>Export</span>
+          <div className="calendar-export-buttons">
+            <button type="button" className="calendar-nav-button" onClick={onExportCurrent}>
+              Current (.txt)
+            </button>
+            <button type="button" className="calendar-nav-button" onClick={onExportAll}>
+              All (.json)
+            </button>
+          </div>
         </div>
       </section>
     </div>

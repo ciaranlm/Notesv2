@@ -4,7 +4,7 @@ import type { Note } from '../storage/types'
 import { getPlainTextFromContent } from '../utils/content'
 import './CommandPalette.css'
 
-export type CommandPaletteMode = 'default' | 'confirm-delete' | 'import-choice' | 'replace-confirm'
+export type CommandPaletteMode = 'default' | 'import-choice' | 'replace-confirm'
 
 export type CommandPaletteProps = {
   isOpen: boolean
@@ -13,9 +13,6 @@ export type CommandPaletteProps = {
   initialMode?: CommandPaletteMode
   onClose: () => void
   onSelectNote: (id: string) => void
-  onDeleteNote: (id: string) => void
-  onExportCurrent: () => void
-  onExportAll: () => void
   onImportMerge: (notes: Note[]) => void
   onImportReplace: (notes: Note[]) => void
   getTitle: (note: Note) => string
@@ -119,9 +116,6 @@ export const CommandPalette = ({
   initialMode = 'default',
   onClose,
   onSelectNote,
-  onDeleteNote,
-  onExportCurrent,
-  onExportAll,
   onImportMerge,
   onImportReplace,
   getTitle,
@@ -203,15 +197,6 @@ export const CommandPalette = ({
       : [
           {
             type: 'action',
-            id: 'delete',
-            label: 'Delete current note',
-            hint: 'Cmd/Ctrl+Shift+Backspace',
-            action: () => setMode('confirm-delete'),
-          },
-          { type: 'action', id: 'export-current', label: 'Export current note (.txt)', action: onExportCurrent },
-          { type: 'action', id: 'export-all', label: 'Export all notes (.json)', action: onExportAll },
-          {
-            type: 'action',
             id: 'import',
             label: 'Import notes (.json)',
             action: () => fileInputRef.current?.click(),
@@ -227,15 +212,13 @@ export const CommandPalette = ({
     }))
 
     return [...actions, ...noteItems]
-  }, [normalizedQuery, onExportAll, onExportCurrent, rankedNotes])
+  }, [normalizedQuery, rankedNotes])
 
   useEffect(() => {
     setSelectedIndex(0)
   }, [query, mode])
 
   if (!isOpen) return null
-
-  const activeNote = notes.find((note) => note.id === currentNoteId)
 
   const handleSelect = (item: ListItem) => {
     if (item.type === 'action') {
@@ -276,12 +259,6 @@ export const CommandPalette = ({
     }
   }
 
-  const handleDeleteSubmit = () => {
-    if (!activeNote) return
-    if (confirmValue.trim().toUpperCase() !== 'DELETE') return
-    onDeleteNote(activeNote.id)
-    onClose()
-  }
 
   const handleImportChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -335,28 +312,6 @@ export const CommandPalette = ({
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={handleKeyDown}
           />
-        )}
-        {mode === 'confirm-delete' && (
-          <div className="palette-confirm">
-            <div className="palette-confirm__title">Type DELETE to confirm</div>
-            <input
-              ref={inputRef}
-              className="palette-input"
-              placeholder="DELETE"
-              value={confirmValue}
-              onChange={(event) => setConfirmValue(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  handleDeleteSubmit()
-                }
-                if (event.key === 'Escape') {
-                  event.preventDefault()
-                  setMode('default')
-                }
-              }}
-            />
-          </div>
         )}
         {mode === 'import-choice' && (
           <div className="palette-confirm">
