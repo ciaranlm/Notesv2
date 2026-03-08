@@ -587,6 +587,24 @@ export const App = () => {
 
   useHotkeys([
     {
+      combo: 'cmd+k',
+      handler: (event) => {
+        event.preventDefault()
+        setPaletteInitialMode('default')
+        setIsPaletteOpen(true)
+      },
+      allowInInput: true,
+    },
+    {
+      combo: 'ctrl+k',
+      handler: (event) => {
+        event.preventDefault()
+        setPaletteInitialMode('default')
+        setIsPaletteOpen(true)
+      },
+      allowInInput: true,
+    },
+    {
       combo: 'cmd+p',
       handler: (event) => {
         event.preventDefault()
@@ -689,12 +707,6 @@ export const App = () => {
       if (event.key === 'Escape' && isCalendarOpen) {
         event.preventDefault()
         handleCloseCalendar()
-        return
-      }
-
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault()
-        void handleToggleCalendar()
         return
       }
 

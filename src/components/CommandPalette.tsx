@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import type { Note, ThemePreference } from '../storage/types'
+import { getPlainTextFromContent } from '../utils/content'
 import './CommandPalette.css'
 
 export type CommandPaletteMode = 'default' | 'rename' | 'confirm-delete' | 'import-choice' | 'replace-confirm'
@@ -28,41 +29,77 @@ type Mode = CommandPaletteMode
 
 type ListItem =
   | { type: 'action'; id: string; label: string; hint?: string; action: () => void }
-  | { type: 'note'; id: string; note: Note; snippet?: Snippet }
+  | { type: 'note'; id: string; note: Note; titleMatch?: HighlightMatch; snippet?: HighlightMatch }
 
-type Snippet = {
+type HighlightMatch = {
   before: string
   match: string
   after: string
 }
 
-const tokenize = (value: string) => value.toLowerCase().split(/\s+/).filter(Boolean)
-
-const matchTokens = (text: string, tokens: string[]) => {
-  const lower = text.toLowerCase()
-  return tokens.every((token) => lower.includes(token))
+type RankedNote = {
+  note: Note
+  title: string
+  bodyText: string
+  score: number
+  titleMatch?: HighlightMatch
+  snippet?: HighlightMatch
 }
 
-const findSnippet = (content: string, tokens: string[]): Snippet | undefined => {
-  if (tokens.length === 0) return undefined
-  const lower = content.toLowerCase()
-  let index = -1
-  let tokenMatch = ''
-  for (const token of tokens) {
-    const found = lower.indexOf(token)
-    if (found >= 0) {
-      index = found
-      tokenMatch = token
-      break
+const normalize = (value: string) => value.trim().toLowerCase()
+
+const fuzzyScore = (text: string, query: string) => {
+  const lowerText = text.toLowerCase()
+  const lowerQuery = query.toLowerCase()
+  if (!lowerText || !lowerQuery) return null
+
+  const exactIndex = lowerText.indexOf(lowerQuery)
+  if (exactIndex >= 0) {
+    return {
+      score: 220 - Math.min(exactIndex, 40),
+      start: exactIndex,
+      end: exactIndex + lowerQuery.length,
     }
   }
-  if (index < 0) return undefined
-  const start = Math.max(0, index - 36)
-  const end = Math.min(content.length, index + tokenMatch.length + 36)
-  const before = content.slice(start, index)
-  const match = content.slice(index, index + tokenMatch.length)
-  const after = content.slice(index + tokenMatch.length, end)
-  return { before, match, after }
+
+  let textIndex = 0
+  const positions: number[] = []
+  for (const character of lowerQuery) {
+    const found = lowerText.indexOf(character, textIndex)
+    if (found < 0) return null
+    positions.push(found)
+    textIndex = found + 1
+  }
+
+  const start = positions[0]
+  const end = positions[positions.length - 1] + 1
+  const gaps = positions.slice(1).reduce((sum, pos, index) => sum + (pos - positions[index] - 1), 0)
+  const compactnessPenalty = Math.min(gaps, 30)
+  const spreadPenalty = Math.min(end - start - lowerQuery.length, 30)
+  return {
+    score: 130 - compactnessPenalty - spreadPenalty - Math.min(start, 30),
+    start,
+    end,
+  }
+}
+
+const toHighlight = (text: string, start: number, end: number): HighlightMatch => ({
+  before: text.slice(0, start),
+  match: text.slice(start, end),
+  after: text.slice(end),
+})
+
+const buildSnippet = (text: string, start: number, end: number): HighlightMatch => {
+  const context = 44
+  const snippetStart = Math.max(0, start - context)
+  const snippetEnd = Math.min(text.length, end + context)
+  const beforeRaw = text.slice(snippetStart, start)
+  const afterRaw = text.slice(end, snippetEnd)
+  return {
+    before: snippetStart > 0 ? `…${beforeRaw}` : beforeRaw,
+    match: text.slice(start, end),
+    after: snippetEnd < text.length ? `${afterRaw}…` : afterRaw,
+  }
 }
 
 const parseImportedNotes = (data: unknown): Note[] => {
@@ -118,7 +155,7 @@ export const CommandPalette = ({
       setImportError(null)
       requestAnimationFrame(() => inputRef.current?.focus())
     }
-  }, [isOpen])
+  }, [isOpen, initialMode])
 
   useEffect(() => {
     if (isOpen) {
@@ -126,57 +163,94 @@ export const CommandPalette = ({
     }
   }, [mode, isOpen])
 
-  const tokens = useMemo(() => tokenize(query), [query])
+  const normalizedQuery = useMemo(() => normalize(query), [query])
 
-  const filteredNotes = useMemo(() => {
-    if (tokens.length === 0) return notes
-    return notes.filter((note) => {
+  const rankedNotes = useMemo<RankedNote[]>(() => {
+    const prepared = notes.map((note) => {
       const title = getTitle(note)
-      return matchTokens(`${title} ${note.content}`, tokens)
+      const bodyText = getPlainTextFromContent(note.content)
+      return { note, title, bodyText }
     })
-  }, [notes, tokens, getTitle])
+
+    if (!normalizedQuery) {
+      return prepared.slice(0, 24).map(({ note, title, bodyText }) => ({ note, title, bodyText, score: 0 }))
+    }
+
+    const ranked: RankedNote[] = []
+    for (const candidate of prepared) {
+      const titleFuzzy = fuzzyScore(candidate.title, normalizedQuery)
+      const bodyFuzzy = fuzzyScore(candidate.bodyText, normalizedQuery)
+      if (!titleFuzzy && !bodyFuzzy) continue
+
+      const hasExactTitle = candidate.title.toLowerCase() === normalizedQuery
+      const score = hasExactTitle
+        ? 10_000
+        : titleFuzzy
+          ? 6_000 + titleFuzzy.score
+          : 1_000 + (bodyFuzzy?.score ?? 0)
+
+      ranked.push({
+        note: candidate.note,
+        title: candidate.title,
+        bodyText: candidate.bodyText,
+        score,
+        titleMatch: titleFuzzy ? toHighlight(candidate.title, titleFuzzy.start, titleFuzzy.end) : undefined,
+        snippet: bodyFuzzy ? buildSnippet(candidate.bodyText, bodyFuzzy.start, bodyFuzzy.end) : undefined,
+      })
+    }
+
+    ranked.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score
+      return b.note.updatedAt - a.note.updatedAt
+    })
+
+    return ranked.slice(0, 40)
+  }, [notes, getTitle, normalizedQuery])
 
   const items = useMemo<ListItem[]>(() => {
-    const actions: ListItem[] = [
-      { type: 'action', id: 'new', label: 'New note', hint: 'Cmd/Ctrl+N', action: onNewNote },
-      {
-        type: 'action',
-        id: 'rename',
-        label: 'Rename current note',
-        action: () => setMode('rename'),
-      },
-      {
-        type: 'action',
-        id: 'delete',
-        label: 'Delete current note',
-        hint: 'Cmd/Ctrl+Shift+Backspace',
-        action: () => setMode('confirm-delete'),
-      },
-      { type: 'action', id: 'export-current', label: 'Export current note (.txt)', action: onExportCurrent },
-      { type: 'action', id: 'export-all', label: 'Export all notes (.json)', action: onExportAll },
-      {
-        type: 'action',
-        id: 'import',
-        label: 'Import notes (.json)',
-        action: () => fileInputRef.current?.click(),
-      },
-      {
-        type: 'action',
-        id: 'theme',
-        label: `Theme: ${themePreference}`,
-        action: onToggleTheme,
-      },
-    ]
+    const actions: ListItem[] = normalizedQuery
+      ? []
+      : [
+          { type: 'action', id: 'new', label: 'New note', hint: 'Cmd/Ctrl+N', action: onNewNote },
+          {
+            type: 'action',
+            id: 'rename',
+            label: 'Rename current note',
+            action: () => setMode('rename'),
+          },
+          {
+            type: 'action',
+            id: 'delete',
+            label: 'Delete current note',
+            hint: 'Cmd/Ctrl+Shift+Backspace',
+            action: () => setMode('confirm-delete'),
+          },
+          { type: 'action', id: 'export-current', label: 'Export current note (.txt)', action: onExportCurrent },
+          { type: 'action', id: 'export-all', label: 'Export all notes (.json)', action: onExportAll },
+          {
+            type: 'action',
+            id: 'import',
+            label: 'Import notes (.json)',
+            action: () => fileInputRef.current?.click(),
+          },
+          {
+            type: 'action',
+            id: 'theme',
+            label: `Theme: ${themePreference}`,
+            action: onToggleTheme,
+          },
+        ]
 
-    const noteItems: ListItem[] = filteredNotes.map((note) => ({
+    const noteItems: ListItem[] = rankedNotes.map((result) => ({
       type: 'note',
-      id: note.id,
-      note,
-      snippet: findSnippet(note.content, tokens),
+      id: result.note.id,
+      note: result.note,
+      titleMatch: result.titleMatch,
+      snippet: result.snippet,
     }))
 
     return [...actions, ...noteItems]
-  }, [filteredNotes, onNewNote, onExportAll, onExportCurrent, onToggleTheme, themePreference, tokens])
+  }, [normalizedQuery, onNewNote, onExportAll, onExportCurrent, onToggleTheme, themePreference, rankedNotes])
 
   useEffect(() => {
     setSelectedIndex(0)
@@ -280,6 +354,8 @@ export const CommandPalette = ({
     onClose()
   }
 
+  const emptyMessage = normalizedQuery ? 'No matching notes. Try a different keyword.' : 'No notes yet. Create one to get started.'
+
   return (
     <div className="palette-overlay" onClick={onClose}>
       <div className="palette" onClick={(event) => event.stopPropagation()}>
@@ -287,7 +363,7 @@ export const CommandPalette = ({
           <input
             ref={inputRef}
             className="palette-input"
-            placeholder="Search notes or run a command..."
+            placeholder="Search notes..."
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={handleKeyDown}
@@ -405,7 +481,15 @@ export const CommandPalette = ({
                 >
                   <div className="palette-note">
                     <div className="palette-note__title">
-                      {title}
+                      {item.titleMatch ? (
+                        <>
+                          {item.titleMatch.before}
+                          <mark>{item.titleMatch.match}</mark>
+                          {item.titleMatch.after}
+                        </>
+                      ) : (
+                        title
+                      )}
                       {item.note.id === currentNoteId && <span className="palette-note__current">Current</span>}
                     </div>
                     {item.snippet && (
@@ -419,11 +503,11 @@ export const CommandPalette = ({
                 </li>
               )
             })}
-            {items.length === 0 && <li className="palette-empty">No results.</li>}
+            {items.length === 0 && <li className="palette-empty">{emptyMessage}</li>}
           </ul>
         )}
         {mode === 'default' && (
-          <div className="palette-footer">Esc to close · Enter to select</div>
+          <div className="palette-footer">↑↓ navigate · Enter open · Esc close</div>
         )}
       </div>
     </div>
