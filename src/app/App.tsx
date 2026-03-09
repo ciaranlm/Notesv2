@@ -69,17 +69,6 @@ const deriveTitle = (note: Note) => {
   return 'Untitled'
 }
 
-const mergeNotes = (existing: Note[], imported: Note[]) => {
-  const map = new Map(existing.map((note) => [note.id, note]))
-  for (const note of imported) {
-    const current = map.get(note.id)
-    if (!current || note.updatedAt >= current.updatedAt) {
-      map.set(note.id, note)
-    }
-  }
-  return Array.from(map.values()).sort((a, b) => b.updatedAt - a.updatedAt)
-}
-
 type NoteDraft = { content: string; updatedAt: number }
 
 const getDraftKey = (noteId: string) => `notes_draft_${noteId}`
@@ -479,47 +468,6 @@ export const App = () => {
     exportFile(blob, 'notes-backup.json')
   }
 
-  const handleImportMerge = async (imported: Note[]) => {
-    let merged = mergeNotes(notes, imported.map(normalizeNote))
-    const todayKey = getTodayKey()
-    if (!merged.some((note) => note.type === 'daily' && note.dateKey === todayKey)) {
-      const dailyNote = createDailyNote(todayKey)
-      merged = [dailyNote, ...merged]
-    }
-    setNotes(merged)
-    const storage = storageRef.current
-    if (storage) {
-      await storage.bulkSaveNotes(merged)
-    }
-  }
-
-  const handleImportReplace = async (imported: Note[]) => {
-    const normalized = imported.map(normalizeNote)
-    setNotes(normalized)
-    const todayKey = getTodayKey()
-    const dailyNote = normalized.find((note) => note.type === 'daily' && note.dateKey === todayKey)
-    if (dailyNote) {
-      setCurrentMode('daily')
-      setCurrentDateKey(todayKey)
-      setCurrentNoteId(dailyNote.id)
-    } else if (normalized[0]) {
-      setCurrentMode('note')
-      setCurrentNoteId(normalized[0].id)
-    }
-    const storage = storageRef.current
-    if (storage) {
-      await storage.clearAllNotes()
-      await storage.bulkSaveNotes(normalized)
-      if (dailyNote) {
-        await storage.setMeta('lastOpenMode', 'daily')
-        await storage.setMeta('lastOpenDateKey', todayKey)
-      } else if (normalized[0]) {
-        await storage.setMeta('lastOpenNoteId', normalized[0].id)
-        await storage.setMeta('lastOpenMode', 'note')
-      }
-    }
-  }
-
   const handleToggleTheme = async () => {
     const next: ThemePreference =
       themePreference === 'system' ? 'light' : themePreference === 'light' ? 'dark' : 'system'
@@ -846,8 +794,6 @@ export const App = () => {
             setIsPaletteOpen(false)
           }}
           onSelectNote={handleSelectNote}
-          onImportMerge={handleImportMerge}
-          onImportReplace={handleImportReplace}
           getTitle={deriveTitle}
         />
       </div>

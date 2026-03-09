@@ -4,25 +4,16 @@ import type { Note } from '../storage/types'
 import { getPlainTextFromContent } from '../utils/content'
 import './CommandPalette.css'
 
-export type CommandPaletteMode = 'default' | 'import-choice' | 'replace-confirm'
-
 export type CommandPaletteProps = {
   isOpen: boolean
   notes: Note[]
   currentNoteId: string | null
-  initialMode?: CommandPaletteMode
   onClose: () => void
   onSelectNote: (id: string) => void
-  onImportMerge: (notes: Note[]) => void
-  onImportReplace: (notes: Note[]) => void
   getTitle: (note: Note) => string
 }
 
-type Mode = CommandPaletteMode
-
-type ListItem =
-  | { type: 'action'; id: string; label: string; hint?: string; action: () => void }
-  | { type: 'note'; id: string; note: Note; titleMatch?: HighlightMatch; snippet?: HighlightMatch }
+type ListItem = { id: string; note: Note; titleMatch?: HighlightMatch; snippet?: HighlightMatch }
 
 type HighlightMatch = {
   before: string
@@ -95,57 +86,25 @@ const buildSnippet = (text: string, start: number, end: number): HighlightMatch 
   }
 }
 
-const parseImportedNotes = (data: unknown): Note[] => {
-  if (!data) return []
-  if (Array.isArray(data)) {
-    return data.filter((note): note is Note => typeof note?.id === 'string')
-  }
-  if (typeof data === 'object' && data !== null && 'notes' in data) {
-    const notes = (data as { notes: unknown }).notes
-    if (Array.isArray(notes)) {
-      return notes.filter((note): note is Note => typeof note?.id === 'string')
-    }
-  }
-  return []
-}
-
 export const CommandPalette = ({
   isOpen,
   notes,
   currentNoteId,
-  initialMode = 'default',
   onClose,
   onSelectNote,
-  onImportMerge,
-  onImportReplace,
   getTitle,
 }: CommandPaletteProps) => {
   const [query, setQuery] = useState('')
-  const [mode, setMode] = useState<Mode>('default')
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const [confirmValue, setConfirmValue] = useState('')
-  const [importNotes, setImportNotes] = useState<Note[] | null>(null)
-  const [importError, setImportError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (isOpen) {
       setQuery('')
-      setMode(initialMode)
       setSelectedIndex(0)
-      setConfirmValue('')
-      setImportNotes(null)
-      setImportError(null)
       requestAnimationFrame(() => inputRef.current?.focus())
     }
-  }, [isOpen, initialMode])
-
-  useEffect(() => {
-    if (isOpen) {
-      requestAnimationFrame(() => inputRef.current?.focus())
-    }
-  }, [mode, isOpen])
+  }, [isOpen])
 
   const normalizedQuery = useMemo(() => normalize(query), [query])
 
@@ -156,9 +115,7 @@ export const CommandPalette = ({
       return { note, title, bodyText }
     })
 
-    if (!normalizedQuery) {
-      return prepared.slice(0, 24).map(({ note, title, bodyText }) => ({ note, title, bodyText, score: 0 }))
-    }
+    if (!normalizedQuery) return []
 
     const ranked: RankedNote[] = []
     for (const candidate of prepared) {
@@ -192,40 +149,23 @@ export const CommandPalette = ({
   }, [notes, getTitle, normalizedQuery])
 
   const items = useMemo<ListItem[]>(() => {
-    const actions: ListItem[] = normalizedQuery
-      ? []
-      : [
-          {
-            type: 'action',
-            id: 'import',
-            label: 'Import notes (.json)',
-            action: () => fileInputRef.current?.click(),
-          },
-        ]
-
     const noteItems: ListItem[] = rankedNotes.map((result) => ({
-      type: 'note',
       id: result.note.id,
       note: result.note,
       titleMatch: result.titleMatch,
       snippet: result.snippet,
     }))
 
-    return [...actions, ...noteItems]
-  }, [normalizedQuery, rankedNotes])
+    return noteItems
+  }, [rankedNotes])
 
   useEffect(() => {
     setSelectedIndex(0)
-  }, [query, mode])
+  }, [query])
 
   if (!isOpen) return null
 
   const handleSelect = (item: ListItem) => {
-    if (item.type === 'action') {
-      item.action()
-      onClose()
-      return
-    }
     onSelectNote(item.id)
     onClose()
   }
@@ -239,7 +179,7 @@ export const CommandPalette = ({
       event.preventDefault()
       setSelectedIndex((prev) => Math.max(prev - 1, 0))
     }
-    if (event.key === 'Enter' && mode === 'default') {
+    if (event.key === 'Enter') {
       event.preventDefault()
       const item = items[selectedIndex]
       if (item) {
@@ -248,132 +188,25 @@ export const CommandPalette = ({
     }
     if (event.key === 'Escape') {
       event.preventDefault()
-      if (mode !== 'default') {
-        setMode('default')
-        setConfirmValue('')
-        setImportNotes(null)
-        setImportError(null)
-        return
-      }
       onClose()
     }
   }
 
-
-  const handleImportChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-    try {
-      const text = await file.text()
-      const parsed = JSON.parse(text)
-      const imported = parseImportedNotes(parsed)
-      if (imported.length === 0) {
-        setImportError('No valid notes found in file.')
-        return
-      }
-      setImportNotes(imported)
-      setMode('import-choice')
-    } catch {
-      setImportError('Could not read this file.')
-    } finally {
-      event.target.value = ''
-    }
-  }
-
-  const handleImportMerge = () => {
-    if (!importNotes) return
-    onImportMerge(importNotes)
-    onClose()
-  }
-
-  const handleImportReplace = () => {
-    setMode('replace-confirm')
-    setConfirmValue('')
-  }
-
-  const handleReplaceConfirm = () => {
-    if (!importNotes) return
-    if (confirmValue.trim().toUpperCase() !== 'REPLACE') return
-    onImportReplace(importNotes)
-    onClose()
-  }
-
-  const emptyMessage = normalizedQuery ? 'No matching notes. Try a different keyword.' : 'No notes yet.'
+  const emptyMessage = normalizedQuery ? 'No matching notes. Try a different keyword.' : 'Type to search notes.'
 
   return (
     <div className="palette-overlay" onClick={onClose}>
       <div className="palette" onClick={(event) => event.stopPropagation()}>
-        {mode === 'default' && (
-          <input
-            ref={inputRef}
-            className="palette-input"
-            placeholder="Search notes..."
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={handleKeyDown}
-          />
-        )}
-        {mode === 'import-choice' && (
-          <div className="palette-confirm">
-            <div className="palette-confirm__title">
-              Import {importNotes?.length ?? 0} notes
-            </div>
-            <div className="palette-actions">
-              <button type="button" onClick={handleImportMerge}>
-                Merge
-              </button>
-              <button type="button" onClick={handleImportReplace}>
-                Replace all
-              </button>
-            </div>
-          </div>
-        )}
-        {mode === 'replace-confirm' && (
-          <div className="palette-confirm">
-            <div className="palette-confirm__title">Type REPLACE to confirm overwrite</div>
-            <input
-              ref={inputRef}
-              className="palette-input"
-              placeholder="REPLACE"
-              value={confirmValue}
-              onChange={(event) => setConfirmValue(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  handleReplaceConfirm()
-                }
-                if (event.key === 'Escape') {
-                  event.preventDefault()
-                  setMode('default')
-                }
-              }}
-            />
-          </div>
-        )}
         <input
-          ref={fileInputRef}
-          type="file"
-          accept="application/json"
-          className="palette-file"
-          onChange={handleImportChange}
+          ref={inputRef}
+          className="palette-input"
+          placeholder="Search notes..."
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={handleKeyDown}
         />
-        {importError && <div className="palette-error">{importError}</div>}
-        {mode === 'default' && (
-          <ul className="palette-list">
-            {items.map((item, index) => {
-              if (item.type === 'action') {
-                return (
-                  <li
-                    key={item.id}
-                    className={`palette-item ${index === selectedIndex ? 'is-active' : ''}`}
-                    onMouseEnter={() => setSelectedIndex(index)}
-                    onClick={() => handleSelect(item)}
-                  >
-                    <span>{item.label}</span>
-                    {item.hint && <span className="palette-hint">{item.hint}</span>}
-                  </li>
-                )
-              }
+        <ul className="palette-list">
+          {items.map((item, index) => {
               const title = getTitle(item.note)
               return (
                 <li
@@ -405,13 +238,10 @@ export const CommandPalette = ({
                   </div>
                 </li>
               )
-            })}
-            {items.length === 0 && <li className="palette-empty">{emptyMessage}</li>}
-          </ul>
-        )}
-        {mode === 'default' && (
-          <div className="palette-footer">↑↓ navigate · Enter open · Esc close</div>
-        )}
+          })}
+          {items.length === 0 && <li className="palette-empty">{emptyMessage}</li>}
+        </ul>
+        <div className="palette-footer">↑↓ navigate · Enter open · Esc close</div>
       </div>
     </div>
   )
