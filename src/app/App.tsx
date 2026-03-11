@@ -387,6 +387,22 @@ export const App = () => {
     scheduleSave(updatedNote)
   }
 
+  const handleEditorClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target
+    if (!(target instanceof Element)) return
+    const anchor = target.closest('a')
+    if (!anchor) return
+
+    const shouldOpenLink = event.metaKey || event.ctrlKey || !event.currentTarget.isContentEditable
+    if (!shouldOpenLink) {
+      event.preventDefault()
+      return
+    }
+
+    event.preventDefault()
+    window.open(anchor.href, '_blank', 'noopener,noreferrer')
+  }, [])
+
   const applyInlineFormatting = (command: 'bold' | 'italic' | 'strikeThrough' | 'underline') => {
     const editor = editorRef.current
     if (!editor) return
@@ -759,6 +775,7 @@ export const App = () => {
             suppressContentEditableWarning
             onInput={(event) => handleContentChange((event.target as HTMLDivElement).innerHTML)}
             onFocus={() => setUiVisible(true)}
+            onClick={handleEditorClick}
           />
         </main>
         {uiVisible && !isPaletteOpen && (
