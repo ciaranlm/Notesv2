@@ -2,13 +2,17 @@
 
 A blank.page-inspired minimalist writing app. Open it and start typing on an instant blank canvas—no accounts, no tracking, and no distractions. Everything stays local-first in your browser storage.
 
+The interface features a clean top bar with calendar access (☰), current date display, and formatting controls (Aa button). Writing statistics appear at the bottom when the editor is focused.
+
 ## Features
 - Daily pages that reset each day automatically.
 - Calendar activity view with a GitHub-style heatmap for daily writing.
 - Instant blank canvas on first paint.
 - Multiple notes (freeform notes + daily pages) with autosave (debounced 400ms).
-- Command palette for all actions (Cmd/Ctrl + K or P).
+- Command palette for searching and opening notes (Cmd/Ctrl + K or P).
 - Search across titles and full note content.
+- Rich text formatting (bold, italic, strikethrough, underline, links, headings, lists).
+- Writing statistics (word count and estimated reading time).
 - Dark/light mode toggle with system default.
 - Offline-first after first load.
 - Installable as a Progressive Web App (PWA) in Chrome/Edge on Windows and macOS.
@@ -17,18 +21,16 @@ A blank.page-inspired minimalist writing app. Open it and start typing on an ins
 | Action | Shortcut |
 | --- | --- |
 | Open command palette | Cmd/Ctrl + K, Cmd/Ctrl + P |
-| New note | Cmd/Ctrl + N |
 | Manual save | Cmd/Ctrl + S |
-| Delete current note (confirm required) | Cmd/Ctrl + Shift + Backspace |
+| Toggle formatting panel | Click Aa button in top bar |
 | Close palette | Esc |
 
 ## Privacy
 Blank Page Notes is local-only. No analytics, no network calls, and no accounts. Your notes stay in your browser storage.
 
-## Export & Import
+## Export
 - **Export current note**: Downloads a `.txt` file of the current note.
 - **Export all notes**: Downloads a `.json` backup.
-- **Import notes**: Use the command palette to import a `.json` backup. You can merge or replace all notes (replace requires confirmation).
 
 ## Storage details
 - **IndexedDB**
