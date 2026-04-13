@@ -1,8 +1,10 @@
 # Blank Page Notes
 
-A blank.page-inspired minimalist writing app. Open it and start typing on an instant blank canvas—no accounts, no tracking, and no distractions. Everything stays local-first in your browser storage.
+**A distraction-free writing space that respects your focus and privacy.**
 
-The interface features a clean top bar with calendar access (☰), current date display, and formatting controls (Aa button). Writing statistics appear at the bottom when the editor is focused.
+Open Blank Page Notes and you're greeted with a completely blank canvas. No cluttered menus, no sign-up forms, no tracking. Just you and your words. It's a minimalist writing app inspired by blank.page—designed to get out of your way so you can write. Everything you create stays local to your browser, forever.
+
+Write daily pages that automatically refresh each day, or create freeform notes anytime. Your notes auto-save silently in the background, and you can search across everything you've written. The interface is intentionally simple: a calm top bar with calendar access, today's date, and light formatting controls when you need them.
 
 ## Features
 - Daily pages that reset each day automatically.
