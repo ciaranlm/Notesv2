@@ -57,6 +57,28 @@ const normalizeNote = (note: Note): Note => {
   return { ...note, id, type, dateKey }
 }
 
+const insertPlainTextAtSelection = (editor: HTMLElement, text: string) => {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0) {
+    editor.append(document.createTextNode(text))
+    return
+  }
+
+  const range = selection.getRangeAt(0)
+  if (!editor.contains(range.commonAncestorContainer)) {
+    editor.append(document.createTextNode(text))
+    return
+  }
+
+  range.deleteContents()
+  const textNode = document.createTextNode(text)
+  range.insertNode(textNode)
+  range.setStartAfter(textNode)
+  range.collapse(true)
+  selection.removeAllRanges()
+  selection.addRange(range)
+}
+
 const getDailyTitle = (dateKey: string) => formatFullDate(parseDateKey(dateKey))
 
 const deriveTitle = (note: Note) => {
@@ -425,6 +447,24 @@ export const App = () => {
       window.setTimeout(applyMarkdownShortcuts, 0)
     }
   }, [applyMarkdownShortcuts])
+
+  const handleEditorPaste = useCallback((event: React.ClipboardEvent<HTMLDivElement>) => {
+    const editor = editorRef.current
+    if (!editor) return
+
+    const plainText = event.clipboardData.getData('text/plain')
+    if (!plainText) return
+
+    event.preventDefault()
+    editor.focus()
+
+    const inserted = document.execCommand('insertText', false, plainText)
+    if (!inserted) {
+      insertPlainTextAtSelection(editor, plainText)
+    }
+
+    handleContentChange(editor.innerHTML)
+  }, [handleContentChange])
 
   const applyInlineFormatting = (command: 'bold' | 'italic' | 'strikeThrough' | 'underline') => {
     const editor = editorRef.current
@@ -798,6 +838,7 @@ export const App = () => {
             suppressContentEditableWarning
             onInput={(event) => handleContentChange((event.target as HTMLDivElement).innerHTML)}
             onKeyDown={handleEditorKeyDown}
+            onPaste={handleEditorPaste}
             onFocus={() => setUiVisible(true)}
             onClick={handleEditorClick}
           />
