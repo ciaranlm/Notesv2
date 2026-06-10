@@ -8,7 +8,6 @@ Write daily pages that automatically refresh each day, or create freeform notes 
 
 ## Features
 - Daily pages that reset each day automatically.
-- Calendar activity view with a GitHub-style heatmap for daily writing.
 - Instant blank canvas on first paint.
 - Multiple notes (freeform notes + daily pages) with autosave (debounced 400ms).
 - Command palette for searching and opening notes (Cmd/Ctrl + K or P).
