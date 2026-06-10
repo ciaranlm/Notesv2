@@ -9,6 +9,7 @@ import type { Note, NoteType, ThemePreference } from '../storage/types'
 import { getPlainTextFromContent, getWordCountFromContent, getWritingStatsFromContent } from '../utils/content'
 import { formatFullDate, getDailyNoteId, getTodayKey, parseDateKey } from '../utils/dates'
 import { createId } from '../utils/id'
+import { applyMarkdownBlockShortcut, applyMarkdownInlineShortcuts } from '../utils/markdown'
 import { now } from '../utils/time'
 import { assert } from '../utils/assertions'
 
@@ -403,6 +404,28 @@ export const App = () => {
     window.open(anchor.href, '_blank', 'noopener,noreferrer')
   }, [])
 
+  const applyMarkdownShortcuts = useCallback(() => {
+    const editor = editorRef.current
+    if (!editor) return
+    const changed = applyMarkdownBlockShortcut(editor) || applyMarkdownInlineShortcuts(editor)
+    if (changed) {
+      handleContentChange(editor.innerHTML)
+    }
+  }, [handleContentChange])
+
+  const handleEditorKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.metaKey || event.ctrlKey || event.altKey) return
+
+    if (event.key === 'Enter') {
+      applyMarkdownShortcuts()
+      return
+    }
+
+    if (event.key === ' ') {
+      window.setTimeout(applyMarkdownShortcuts, 0)
+    }
+  }, [applyMarkdownShortcuts])
+
   const applyInlineFormatting = (command: 'bold' | 'italic' | 'strikeThrough' | 'underline') => {
     const editor = editorRef.current
     if (!editor) return
@@ -774,6 +797,7 @@ export const App = () => {
             aria-multiline="true"
             suppressContentEditableWarning
             onInput={(event) => handleContentChange((event.target as HTMLDivElement).innerHTML)}
+            onKeyDown={handleEditorKeyDown}
             onFocus={() => setUiVisible(true)}
             onClick={handleEditorClick}
           />
