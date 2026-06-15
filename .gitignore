@@ -1,6 +1,7 @@
-node_modules
-/dist
-/.env
-/.env.*
 .DS_Store
-tsconfig.tsbuildinfo
+.build/
+.swiftpm/
+Package.resolved
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
