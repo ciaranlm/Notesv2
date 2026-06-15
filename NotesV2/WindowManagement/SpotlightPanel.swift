@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 
 final class SpotlightPanel: NSPanel {
@@ -24,3 +25,5 @@ final class SpotlightPanel: NSPanel {
         closeHandler?()
     }
 }
+
+#endif

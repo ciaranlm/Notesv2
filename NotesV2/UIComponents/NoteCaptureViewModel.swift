@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import Foundation
 import AppKit
 
@@ -71,3 +72,5 @@ enum CaptureState: Equatable {
     case sent
     case failed
 }
+
+#endif

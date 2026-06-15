@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import SwiftUI
 
 struct NoteCaptureView: View {
@@ -160,3 +161,5 @@ struct NoteCaptureView: View {
         }
     }
 }
+
+#endif
