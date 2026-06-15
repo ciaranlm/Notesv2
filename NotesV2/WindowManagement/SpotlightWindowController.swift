@@ -1,5 +1,6 @@
 #if canImport(AppKit)
 import AppKit
+import QuartzCore
 import SwiftUI
 
 final class SpotlightWindowController: NSWindowController {

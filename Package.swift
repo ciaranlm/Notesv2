@@ -11,8 +11,11 @@ let package = Package(
         .executableTarget(
             name: "NotesV2",
             path: "NotesV2",
-            exclude: ["Resources/Info.plist"],
-            swiftSettings: [.unsafeFlags(["-parse-as-library"])]
+            exclude: ["Resources/Info.plist"]
+        ),
+        .testTarget(
+            name: "NotesV2Tests",
+            dependencies: ["NotesV2"]
         )
     ]
 )
