@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 import SwiftUI
 
@@ -45,3 +46,5 @@ final class SpotlightWindowController: NSWindowController {
         }
     }
 }
+
+#endif

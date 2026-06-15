@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(AppKit)
+import AppKit
+#endif
 
 protocol NotesCreating {
     func createNote(body: String, openNotes: Bool) async throws
@@ -25,6 +28,7 @@ enum AppleNotesError: LocalizedError {
     }
 }
 
+#if canImport(AppKit)
 final class AppleNotesService: NotesCreating {
     func createNote(body: String, openNotes: Bool = false) async throws {
         let note = CapturedNote(body: body)
@@ -62,3 +66,4 @@ final class AppleNotesService: NotesCreating {
             .replacingOccurrences(of: "\n", with: "\\n") + "\""
     }
 }
+#endif

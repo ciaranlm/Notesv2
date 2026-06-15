@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import SwiftUI
 
 @main
@@ -20,3 +21,5 @@ struct NotesV2App: App {
         }
     }
 }
+
+#endif

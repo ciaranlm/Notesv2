@@ -23,6 +23,6 @@ struct CapturedNote: Equatable {
 
     var bodyLineCount: Int {
         guard !trimmedBody.isEmpty else { return 0 }
-        return trimmedBody.split(whereSeparator: \.isNewline, omittingEmptySubsequences: false).count
+        return trimmedBody.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).count
     }
 }
