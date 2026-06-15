@@ -5,3 +5,5 @@ Package.resolved
 DerivedData/
 *.xcodeproj/xcuserdata/
 *.xcworkspace/xcuserdata/
+
+node_modules/

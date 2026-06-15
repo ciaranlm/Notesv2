@@ -1,10 +1,18 @@
 # NotesV2 for macOS
 
-NotesV2 is a native macOS capture utility for quickly sending text into Apple Notes. It is intentionally not a wrapper around the web app: it uses SwiftUI, AppKit window management, and AppleScript automation so the interaction feels closer to Spotlight or Raycast than a browser-based editor.
+NotesV2 is a native macOS capture utility for quickly sending text into Apple Notes. It deliberately avoids recreating the old web interface: the app now behaves like a focused Mac command surface with a floating panel, native keyboard shortcuts, system materials, and AppleScript automation.
+
+## Native workflow
+
+- Open the floating capture panel and start typing immediately.
+- Use the first line as an automatic note preview title while preserving the full body in Apple Notes.
+- Press **Enter** to save quickly, or **Shift + Enter** to insert another line.
+- Optionally keep Apple Notes in the background, or enable **Open Notes after saving** when you want to jump into the created note context.
+- Clear the draft with **Command + N** or dismiss the panel with **Escape** / **Command + W**.
 
 ## Overview
 
-NotesV2 is now a Swift-only macOS app. The legacy React, Vite, PWA, and browser storage implementation has been removed so the repository contains only the native Swift Package and app sources.
+NotesV2 is a Swift-only macOS app. The legacy React, Vite, PWA, and browser storage implementation has been removed so the repository contains only the native Swift Package and app sources.
 
 ## Project structure
 
@@ -37,6 +45,7 @@ If permission is denied, enable it later in **System Settings → Privacy & Secu
 ## Keyboard shortcuts
 
 - **Enter**: send the current note to Apple Notes
+- **Shift + Enter**: add a new line in the editor
 - **Escape**: close the capture window
 - **Command + N**: clear the field for a new note
 - **Command + W**: close the capture window

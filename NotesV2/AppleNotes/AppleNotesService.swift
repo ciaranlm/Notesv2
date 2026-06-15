@@ -1,7 +1,7 @@
 import Foundation
 
 protocol NotesCreating {
-    func createNote(body: String) async throws
+    func createNote(body: String, openNotes: Bool) async throws
 }
 
 enum AppleNotesError: LocalizedError {
@@ -26,15 +26,16 @@ enum AppleNotesError: LocalizedError {
 }
 
 final class AppleNotesService: NotesCreating {
-    func createNote(body: String) async throws {
+    func createNote(body: String, openNotes: Bool = false) async throws {
         let note = CapturedNote(body: body)
         guard !note.isEmpty else { throw AppleNotesError.emptyNote }
 
         try await Task.detached(priority: .userInitiated) {
             let escapedBody = Self.appleScriptString(note.trimmedBody)
+            let activationLine = openNotes ? "activate" : ""
             let script = """
             tell application "Notes"
-                activate
+                \(activationLine)
                 set createdNote to make new note at folder "Notes" with properties {body:\(escapedBody)}
                 id of createdNote
             end tell
