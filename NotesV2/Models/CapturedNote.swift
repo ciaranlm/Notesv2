@@ -11,4 +11,18 @@ struct CapturedNote: Equatable {
     var isEmpty: Bool {
         trimmedBody.isEmpty
     }
+
+    var title: String {
+        let firstLine = trimmedBody
+            .split(whereSeparator: \.isNewline)
+            .first
+            .map(String.init) ?? "Untitled note"
+
+        return firstLine.count > 64 ? String(firstLine.prefix(61)) + "…" : firstLine
+    }
+
+    var bodyLineCount: Int {
+        guard !trimmedBody.isEmpty else { return 0 }
+        return trimmedBody.split(whereSeparator: \.isNewline, omittingEmptySubsequences: false).count
+    }
 }
