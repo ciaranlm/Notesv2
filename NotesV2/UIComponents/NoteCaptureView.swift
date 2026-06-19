@@ -4,6 +4,7 @@ import SwiftUI
 struct NoteCaptureView: View {
     @StateObject var viewModel: NoteCaptureViewModel
     @FocusState private var focused: Bool
+    @State private var keyMonitor: Any?
 
     var body: some View {
         ZStack {
@@ -19,26 +20,48 @@ struct NoteCaptureView: View {
             .padding(.vertical, 22)
         }
         .frame(width: 720, height: 292)
-        .onAppear { focused = true }
+        .onAppear {
+            focused = true
+            installKeyMonitorIfNeeded()
+        }
+        .onDisappear(perform: removeKeyMonitor)
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in focused = true }
         .animation(.easeInOut(duration: 0.16), value: viewModel.state)
-        .onKeyPress(.return) { press in
-            if press.modifiers.contains(.command) || !press.modifiers.contains(.shift) {
-                viewModel.submit()
-                return .handled
+    }
+
+    private func installKeyMonitorIfNeeded() {
+        guard keyMonitor == nil else { return }
+
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            let characters = event.charactersIgnoringModifiers?.lowercased()
+
+            switch characters {
+            case "\r", "\n":
+                if modifiers.contains(.command) || !modifiers.contains(.shift) {
+                    viewModel.submit()
+                    return nil
+                }
+            case "\u{1B}":
+                NSApp.keyWindow?.cancelOperation(nil)
+                return nil
+            case "n":
+                if modifiers.contains(.command) {
+                    viewModel.resetForNewNote()
+                    return nil
+                }
+            default:
+                break
             }
-            return .ignored
+
+            return event
         }
-        .onKeyPress(.escape) {
-            NSApp.keyWindow?.cancelOperation(nil)
-            return .handled
-        }
-        .onKeyPress("n", phases: .down) { press in
-            if press.modifiers.contains(.command) {
-                viewModel.resetForNewNote()
-                return .handled
-            }
-            return .ignored
+    }
+
+    private func removeKeyMonitor() {
+        if let keyMonitor {
+            NSEvent.removeMonitor(keyMonitor)
+            self.keyMonitor = nil
         }
     }
 
